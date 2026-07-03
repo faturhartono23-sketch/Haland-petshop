@@ -1,0 +1,342 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN_KLINIK
+  DOKTER
+  CUSTOMER
+}
+
+enum AppointmentStatus {
+  WAITING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum PetHotelBookingStatus {
+  BOOKED
+  CHECKED_IN
+  CHECKED_OUT
+}
+
+enum PetHotelRoomStatus {
+  AVAILABLE
+  OCCUPIED
+}
+
+enum PetHotelLogType {
+  FEEDING
+  MEDICINE
+  NOTE
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  OPNAME
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  CANCELLED
+}
+
+enum InvoiceItemType {
+  KONSULTASI
+  TINDAKAN
+  OBAT
+  PET_HOTEL
+  PRODUK
+}
+
+enum PaymentMethod {
+  CASH
+  NON_CASH
+}
+
+model User {
+  id               String   @id @default(cuid())
+  username         String   @unique
+  pinHash          String
+  name             String
+  phone            String?
+  role             UserRole
+  isActive         Boolean  @default(true)
+  isLocked         Boolean  @default(false)
+  mustChangePin    Boolean  @default(true)
+  failedPinAttempts Int     @default(0)
+  lockedUntil      DateTime?
+  createdById      String?
+  createdAt        DateTime @default(now())
+
+  createdBy              User?            @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdUsers           User[]           @relation("UserCreatedBy")
+  customer               Customer?
+  notifications          Notification[]
+  auditLogs              AuditLog[]
+  appointmentsAsDoctor   Appointment[]    @relation("DoctorAppointments")
+  medicalRecordsAsDoctor MedicalRecord[]  @relation("DoctorMedicalRecords")
+}
+
+model Customer {
+  id      String  @id @default(cuid())
+  userId  String? @unique
+  name    String
+  phone   String?
+  address String?
+  notes   String?
+
+  user          User?            @relation(fields: [userId], references: [id])
+  pets          Pet[]
+  appointments  Appointment[]
+  invoices      Invoice[]
+}
+
+model Pet {
+  id          String    @id @default(cuid())
+  customerId  String
+  name        String
+  species     String
+  breed       String?
+  birthDate   DateTime?
+  gender      String?
+  photo       String?
+
+  customer         Customer            @relation(fields: [customerId], references: [id])
+  weightLogs       PetWeightLog[]
+  vaccineRecords   PetVaccineRecord[]
+  diseaseRecords   PetDiseaseRecord[]
+  allergies        PetAllergy[]
+  appointments     Appointment[]
+  medicalRecords   MedicalRecord[]
+  hotelBookings    PetHotelBooking[]
+}
+
+model PetWeightLog {
+  id     String   @id @default(cuid())
+  petId  String
+  weight Float
+  date   DateTime @default(now())
+
+  pet Pet @relation(fields: [petId], references: [id])
+}
+
+model PetVaccineRecord {
+  id            String    @id @default(cuid())
+  petId         String
+  vaccineName   String
+  date          DateTime  @default(now())
+  nextDueDate   DateTime?
+
+  pet Pet @relation(fields: [petId], references: [id])
+}
+
+model PetDiseaseRecord {
+  id           String    @id @default(cuid())
+  petId        String
+  diseaseName  String
+  note         String?
+  date         DateTime  @default(now())
+
+  pet Pet @relation(fields: [petId], references: [id])
+}
+
+model PetAllergy {
+  id        String  @id @default(cuid())
+  petId     String
+  allergen  String
+  note      String?
+
+  pet Pet @relation(fields: [petId], references: [id])
+}
+
+model Appointment {
+  id                  String              @id @default(cuid())
+  petId               String
+  customerId          String
+  doctorId            String?
+  date                DateTime
+  queueNumber         Int?
+  status              AppointmentStatus   @default(WAITING)
+  requestedByCustomer Boolean             @default(false)
+
+  pet            Pet            @relation(fields: [petId], references: [id])
+  customer       Customer       @relation(fields: [customerId], references: [id])
+  doctor         User?          @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  medicalRecord  MedicalRecord?
+}
+
+model MedicalRecord {
+  id            String   @id @default(cuid())
+  appointmentId String   @unique
+  petId         String
+  doctorId      String
+  diagnosis     String?
+  treatment     String?
+  prescription  String?
+  labResult     String?
+  photos        String?
+  date          DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  pet         Pet         @relation(fields: [petId], references: [id])
+  doctor      User        @relation("DoctorMedicalRecords", fields: [doctorId], references: [id])
+}
+
+model PetHotelBooking {
+  id                  String                  @id @default(cuid())
+  petId               String
+  roomId              String?
+  checkInDate         DateTime
+  checkOutDate        DateTime
+  status              PetHotelBookingStatus  @default(BOOKED)
+  requestedByCustomer Boolean                 @default(false)
+
+  pet    Pet              @relation(fields: [petId], references: [id])
+  room   PetHotelRoom?    @relation(fields: [roomId], references: [id])
+  logs   PetHotelLog[]
+}
+
+model PetHotelRoom {
+  id     String               @id @default(cuid())
+  name   String
+  status PetHotelRoomStatus  @default(AVAILABLE)
+
+  bookings PetHotelBooking[]
+}
+
+model PetHotelLog {
+  id          String            @id @default(cuid())
+  bookingId   String
+  type        PetHotelLogType
+  description String
+  photo       String?
+  date        DateTime          @default(now())
+
+  booking PetHotelBooking @relation(fields: [bookingId], references: [id])
+}
+
+model Product {
+  id         String  @id @default(cuid())
+  name       String
+  sku        String?
+  barcode    String?
+  categoryId String?
+  supplierId String?
+  buyPrice   Float   @default(0)
+  sellPrice  Float   @default(0)
+  stock      Int     @default(0)
+  minStock   Int     @default(0)
+
+  category      ProductCategory? @relation(fields: [categoryId], references: [id])
+  supplier      Supplier?        @relation(fields: [supplierId], references: [id])
+  stockMovements StockMovement[]
+}
+
+model ProductCategory {
+  id   String @id @default(cuid())
+  name String
+
+  products Product[]
+}
+
+model Supplier {
+  id      String  @id @default(cuid())
+  name    String
+  contact String?
+
+  products Product[]
+}
+
+model StockMovement {
+  id        String            @id @default(cuid())
+  productId String
+  type      StockMovementType
+  quantity  Int
+  note      String?
+  date      DateTime          @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  customerId    String
+  invoiceNumber String        @unique
+  status        InvoiceStatus @default(UNPAID)
+  totalAmount   Float         @default(0)
+  date          DateTime      @default(now())
+
+  customer Customer      @relation(fields: [customerId], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+}
+
+model InvoiceItem {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  type        InvoiceItemType
+  description String
+  qty         Int             @default(1)
+  price       Float           @default(0)
+  subtotal    Float           @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model Payment {
+  id        String         @id @default(cuid())
+  invoiceId String
+  method    PaymentMethod
+  amount    Float
+  date      DateTime       @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model Notification {
+  id      String   @id @default(cuid())
+  userId  String
+  title   String
+  message String
+  isRead  Boolean  @default(false)
+  type    String?
+  date    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  entity      String
+  entityId    String?
+  description String?
+  date        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Settings {
+  id               String  @id @default(cuid())
+  clinicName       String?
+  logo             String?
+  address          String?
+  phone            String?
+  operationalHours String?
+  invoiceFormat    String?
+  currency         String?
+}
