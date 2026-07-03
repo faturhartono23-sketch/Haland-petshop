@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { FormDialog } from '@/components/shared/form-dialog';
-import { getRoleLabel, type Role } from '@/lib/permissions';
+import { type Role } from '@/lib/permissions';
 
 type UserFormValues = {
   id?: string;
@@ -23,11 +24,18 @@ type UserFormDialogProps = {
   onSubmit: (values: UserFormValues) => void | Promise<void>;
 };
 
-const roleOptions: Array<{ value: Role; label: string }> = [
+const allRoleOptions: Array<{ value: Role; label: string }> = [
   { value: 'CUSTOMER', label: 'Customer' },
+  { value: 'GUEST', label: 'Guest' },
+  { value: 'RECEPTIONIST', label: 'Receptionist' },
+  { value: 'STAFF', label: 'Staff' },
+  { value: 'CASHIER', label: 'Cashier' },
   { value: 'ADMIN_KLINIK', label: 'Admin Klinik' },
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'VETERINARIAN', label: 'Veterinarian' },
   { value: 'DOKTER', label: 'Doctor' },
   { value: 'OWNER', label: 'Owner' },
+  { value: 'SUPER_ADMIN', label: 'Super Admin' },
 ];
 
 const emptyValues = (): UserFormValues => ({
@@ -39,7 +47,25 @@ const emptyValues = (): UserFormValues => ({
 });
 
 export function UserFormDialog({ open, mode, initialValues, submitting = false, onClose, onSubmit }: UserFormDialogProps) {
+  const { data: session } = useSession();
   const [values, setValues] = useState<UserFormValues>(emptyValues());
+
+  const actorRole = (session?.user as { role?: string } | undefined)?.role as Role | undefined;
+  const roleOptions = useMemo(() => {
+    if (!actorRole) {
+      return [{ value: 'CUSTOMER' as Role, label: 'Customer' }];
+    }
+
+    if (actorRole === 'OWNER' || actorRole === 'SUPER_ADMIN') {
+      return allRoleOptions;
+    }
+
+    if (actorRole === 'ADMIN' || actorRole === 'ADMIN_KLINIK') {
+      return [{ value: 'CUSTOMER' as Role, label: 'Customer' }];
+    }
+
+    return [{ value: 'CUSTOMER' as Role, label: 'Customer' }];
+  }, [actorRole]);
 
   useEffect(() => {
     if (initialValues) {

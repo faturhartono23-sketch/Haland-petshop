@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { calculatePosTotals, getPaymentStatus, roundCurrency } from '@/lib/pos';
@@ -211,6 +212,14 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
 
       return createdInvoice;
     });
+
+    const customerUser = await prisma.customer.findUnique({ where: { id: parsed.data.customerId }, select: { userId: true } });
+    await createNotification({
+      userId: customerUser?.userId ?? actorId,
+      title: 'Penjualan POS selesai',
+      message: `Transaksi ${invoice.invoiceNumber} berhasil dicatat.`,
+      type: 'pos',
+    }).catch(() => undefined);
 
     revalidatePath('/pos');
     revalidatePath('/billing');

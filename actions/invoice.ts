@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
@@ -66,6 +67,18 @@ async function createAuditLog(userId: string, action: string, entity: string, en
       description,
     },
   });
+}
+
+async function notifyInvoiceChange(userId: string | null | undefined, title: string, message: string) {
+  if (!userId) {
+    return;
+  }
+
+  try {
+    await createNotification({ userId, title, message, type: 'invoice' });
+  } catch {
+    // ignore notification errors so invoice workflows remain resilient
+  }
 }
 
 export async function getInvoiceLookups() {
@@ -246,6 +259,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
   });
 
   await createAuditLog(actorId, 'CREATE', 'Invoice', invoice.id, `Membuat invoice ${invoice.invoiceNumber}`);
+  await notifyInvoiceChange(customer.userId, 'Invoice dibuat', `Invoice ${invoice.invoiceNumber} telah dibuat untuk Anda.`);
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');
   revalidatePath('/dashboard');
@@ -314,6 +328,7 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
   });
 
   await createAuditLog(actorId, 'PAYMENT', 'Invoice', updatedInvoice.id, `Mencatat pembayaran invoice ${updatedInvoice.invoiceNumber}`);
+  await notifyInvoiceChange(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Pembayaran tercatat', `Pembayaran untuk invoice ${updatedInvoice.invoiceNumber} telah diterima.`);
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');
   revalidatePath('/dashboard');
@@ -355,6 +370,7 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
   });
 
   await createAuditLog(actorId, 'CANCEL', 'Invoice', updatedInvoice.id, `Membatalkan invoice ${updatedInvoice.invoiceNumber}`);
+  await notifyInvoiceChange(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Invoice dibatalkan', `Invoice ${updatedInvoice.invoiceNumber} telah dibatalkan.`);
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');
   revalidatePath('/dashboard');

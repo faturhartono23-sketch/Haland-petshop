@@ -21,8 +21,12 @@ export function FormDialog({ open, title, description, children, onClose }: Form
       if (event.key === 'Escape') onClose();
     }
 
+    document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [open, onClose]);
 
   if (!open) return null;

@@ -7,6 +7,7 @@ import { cancelAppointment, createAppointment, listAppointmentLookups, listAppoi
 export default function CustomerAppointmentsPage() {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [pets, setPets] = useState<any[]>([]);
+  const [doctors, setDoctors] = useState<any[]>([]);
   const [form, setForm] = useState({ petId: '', date: '', doctorId: '' });
   const [message, setMessage] = useState('');
   const [isErrorMessage, setIsErrorMessage] = useState(false);
@@ -21,7 +22,10 @@ export default function CustomerAppointmentsPage() {
     setLoading(true);
     const [appointmentResult, lookupResult] = await Promise.all([listAppointments(), listAppointmentLookups()]);
     if (appointmentResult.success) setAppointments(appointmentResult.appointments as any[]);
-    if (lookupResult.success) setPets(lookupResult.pets as any[]);
+    if (lookupResult.success) {
+      setPets(lookupResult.pets as any[]);
+      setDoctors(lookupResult.doctors as any[]);
+    }
     setLoading(false);
   }
 
@@ -38,7 +42,7 @@ export default function CustomerAppointmentsPage() {
       return;
     }
 
-    const result = await createAppointment({ petId: form.petId, customerId: '', doctorId: form.doctorId || undefined, date: form.date, queueNumber: undefined, status: 'WAITING', requestedByCustomer: true });
+    const result = await createAppointment({ petId: form.petId, doctorId: form.doctorId || undefined, date: form.date, requestedByCustomer: true });
     setSubmitting(false);
 
     if (result.success) {
@@ -90,6 +94,13 @@ export default function CustomerAppointmentsPage() {
           Tanggal & waktu
           <input type="datetime-local" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
         </label>
+        <label className="block text-sm text-zinc-600">
+          Dokter (opsional)
+          <select value={form.doctorId} onChange={(event) => setForm({ ...form, doctorId: event.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
+            <option value="">Pilih dokter</option>
+            {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
+          </select>
+        </label>
         <button type="submit" disabled={submitting} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{submitting ? 'Mengirim...' : 'Kirim permintaan'}</button>
       </form>
 
@@ -98,10 +109,11 @@ export default function CustomerAppointmentsPage() {
         {!loading && appointments.length === 0 ? <div className="rounded-xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">Belum ada appointment.</div> : null}
         {!loading && appointments.map((appointment) => (
           <div key={appointment.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-semibold text-zinc-900">{appointment.pet?.name}</p>
-                <p className="text-sm text-zinc-600">{new Date(appointment.date).toLocaleString('id-ID')} • {appointment.status}</p>
+                <p className="mt-1 text-sm text-zinc-600">{new Date(appointment.date).toLocaleString('id-ID')} • {appointment.status}</p>
+                <p className="mt-1 text-sm text-zinc-500">Dokter: {appointment.doctor?.name ?? '-'}</p>
               </div>
               {appointment.status !== 'DONE' && appointment.status !== 'CANCELLED' && appointment.status !== 'IN_PROGRESS' ? (
                 <button type="button" onClick={() => void handleCancel(appointment.id)} className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700">Batalkan</button>

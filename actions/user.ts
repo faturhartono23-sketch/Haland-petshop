@@ -5,13 +5,14 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { canPerformAction, type Role } from '@/lib/permissions';
 
-type UserRole = 'OWNER' | 'ADMIN_KLINIK' | 'DOKTER' | 'CUSTOMER';
+type UserRole = Role;
 
 const userInputSchema = z.object({
   username: z.string().trim().min(3).max(30).regex(/^[a-z0-9_]+$/),
   name: z.string().trim().min(2).max(80),
-  role: z.enum(['OWNER', 'ADMIN_KLINIK', 'DOKTER', 'CUSTOMER']),
+  role: z.enum(['OWNER', 'SUPER_ADMIN', 'ADMIN', 'ADMIN_KLINIK', 'VETERINARIAN', 'CASHIER', 'RECEPTIONIST', 'STAFF', 'DOKTER', 'CUSTOMER', 'GUEST']),
   phone: z.string().trim().max(20).optional().or(z.literal('')),
   isActive: z.boolean().optional(),
 });
@@ -41,19 +42,23 @@ function generatePin() {
 }
 
 function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
-  return (session?.user as { role?: string } | undefined)?.role;
+  return (session?.user as { role?: string } | undefined)?.role as Role | undefined;
 }
 
-function canManageTarget(actorRole: string | undefined, targetRole: UserRole) {
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
+function canManageTarget(actorRole: Role | undefined, targetRole: UserRole) {
   if (!actorRole) {
     return { allowed: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole === 'OWNER') {
+  if (actorRole === 'OWNER' || actorRole === 'SUPER_ADMIN') {
     return { allowed: true };
   }
 
-  if (actorRole === 'ADMIN_KLINIK' && targetRole === 'CUSTOMER') {
+  if ((actorRole === 'ADMIN' || actorRole === 'ADMIN_KLINIK') && targetRole === 'CUSTOMER') {
     return { allowed: true };
   }
 
@@ -68,7 +73,7 @@ export async function listUsers() {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole !== 'OWNER' && actorRole !== 'ADMIN_KLINIK') {
+  if (!actorRole || !canPerformAction(actorRole, 'users', 'read')) {
     return { success: false, message: 'Anda tidak berwenang melihat daftar pengguna.' };
   }
 
@@ -107,15 +112,17 @@ export async function createUser(input: z.infer<typeof userInputSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole === 'OWNER') {
-    // Allowed.
-  } else if (actorRole === 'ADMIN_KLINIK' && parsed.data.role === 'CUSTOMER') {
-    // Allowed.
-  } else {
-    return { success: false, message: 'Anda tidak berwenang membuat akun dengan role tersebut.' };
+  if (!actorRole || !canPerformAction(actorRole, 'users', 'create')) {
+    return { success: false, message: 'Anda tidak berwenang membuat akun.' };
   }
 
-  const existing = await prisma.user.findUnique({ where: { username: parsed.data.username } });
+  const permission = canManageTarget(actorRole, parsed.data.role);
+  if (!permission.allowed) {
+    return { success: false, message: permission.message };
+  }
+
+  const normalizedUsername = normalizeUsername(parsed.data.username);
+  const existing = await prisma.user.findFirst({ where: { username: { equals: normalizedUsername, mode: 'insensitive' } } });
   if (existing) {
     return { success: false, message: 'Username sudah dipakai.' };
   }
@@ -124,35 +131,40 @@ export async function createUser(input: z.infer<typeof userInputSchema>) {
   const pinHash = await bcrypt.hash(temporaryPin, 10);
   const actorId = session.user.id;
 
-  const user = await prisma.$transaction(async (tx) => {
-    const created = await tx.user.create({
-      data: {
-        username: parsed.data.username,
-        pinHash,
-        name: parsed.data.name,
-        phone: parsed.data.phone || null,
-        role: parsed.data.role,
-        isActive: parsed.data.isActive ?? true,
-        mustChangePin: true,
-        createdById: session.user.id,
-      },
+  try {
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username: normalizedUsername,
+          pinHash,
+          name: parsed.data.name,
+          phone: parsed.data.phone || null,
+          role: parsed.data.role,
+          isActive: parsed.data.isActive ?? true,
+          mustChangePin: true,
+          createdById: actorId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'CREATE',
+          entity: 'User',
+          entityId: created.id,
+          description: `Membuat akun ${created.username}`,
+        },
+      });
+
+      return created;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actorId,
-        action: 'CREATE',
-        entity: 'User',
-        entityId: created.id,
-        description: `Membuat akun ${created.username}`,
-      },
-    });
-
-    return created;
-  });
-
-  revalidatePath('/users');
-  return { success: true, userId: user.id, temporaryPin };
+    revalidatePath('/users');
+    return { success: true, userId: user.id, temporaryPin };
+  } catch (error) {
+    console.error('Failed to create user', error);
+    return { success: false, message: 'Gagal membuat akun.' };
+  }
 }
 
 export async function updateUser(input: z.infer<typeof updateUserSchema>) {
@@ -168,11 +180,11 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  const actorId = session.user.id;
-  if (!actorId) {
-    return { success: false, message: 'Tidak terautentikasi.' };
+  if (!actorRole || !canPerformAction(actorRole, 'users', 'update')) {
+    return { success: false, message: 'Anda tidak berwenang mengubah akun.' };
   }
 
+  const actorId = session.user.id;
   const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.id } });
   if (!targetUser) {
     return { success: false, message: 'Akun tidak ditemukan.' };
@@ -183,37 +195,42 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
     return { success: false, message: permission.message };
   }
 
-  if (actorRole === 'ADMIN_KLINIK' && parsed.data.role !== 'CUSTOMER') {
-    return { success: false, message: 'Admin Klinik hanya dapat mengubah akun Customer.' };
+  if ((actorRole === 'ADMIN' || actorRole === 'ADMIN_KLINIK') && parsed.data.role !== 'CUSTOMER') {
+    return { success: false, message: 'Admin hanya dapat mengubah akun Customer.' };
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const current = await tx.user.update({
-      where: { id: parsed.data.id },
-      data: {
-        username: parsed.data.username,
-        name: parsed.data.name,
-        phone: parsed.data.phone || null,
-        role: parsed.data.role,
-        isActive: parsed.data.isActive ?? targetUser.isActive,
-      },
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.user.update({
+        where: { id: parsed.data.id },
+        data: {
+          username: normalizeUsername(parsed.data.username),
+          name: parsed.data.name,
+          phone: parsed.data.phone || null,
+          role: parsed.data.role,
+          isActive: parsed.data.isActive ?? targetUser.isActive,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'UPDATE',
+          entity: 'User',
+          entityId: current.id,
+          description: `Memperbarui akun ${current.username}`,
+        },
+      });
+
+      return current;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actorId,
-        action: 'UPDATE',
-        entity: 'User',
-        entityId: current.id,
-        description: `Memperbarui akun ${current.username}`,
-      },
-    });
-
-    return current;
-  });
-
-  revalidatePath('/users');
-  return { success: true, userId: updated.id };
+    revalidatePath('/users');
+    return { success: true, userId: updated.id };
+  } catch (error) {
+    console.error('Failed to update user', error);
+    return { success: false, message: 'Gagal memperbarui akun.' };
+  }
 }
 
 export async function deleteUser(input: z.infer<typeof deleteUserSchema>) {
@@ -229,14 +246,18 @@ export async function deleteUser(input: z.infer<typeof deleteUserSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  const actorId = session.user.id;
-  if (!actorId) {
-    return { success: false, message: 'Tidak terautentikasi.' };
+  if (!actorRole || !canPerformAction(actorRole, 'users', 'delete')) {
+    return { success: false, message: 'Anda tidak berwenang menonaktifkan akun.' };
   }
 
+  const actorId = session.user.id;
   const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.id } });
   if (!targetUser) {
     return { success: false, message: 'Akun tidak ditemukan.' };
+  }
+
+  if (targetUser.id === actorId) {
+    return { success: false, message: 'Tidak dapat menonaktifkan akun sendiri.' };
   }
 
   const permission = canManageTarget(actorRole, targetUser.role);
@@ -244,31 +265,36 @@ export async function deleteUser(input: z.infer<typeof deleteUserSchema>) {
     return { success: false, message: permission.message };
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const current = await tx.user.update({
-      where: { id: parsed.data.id },
-      data: {
-        isActive: false,
-        isLocked: false,
-        lockedUntil: null,
-      },
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.user.update({
+        where: { id: parsed.data.id },
+        data: {
+          isActive: false,
+          isLocked: false,
+          lockedUntil: null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'DELETE',
+          entity: 'User',
+          entityId: current.id,
+          description: `Menonaktifkan akun ${current.username}`,
+        },
+      });
+
+      return current;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actorId,
-        action: 'DELETE',
-        entity: 'User',
-        entityId: current.id,
-        description: `Menonaktifkan akun ${current.username}`,
-      },
-    });
-
-    return current;
-  });
-
-  revalidatePath('/users');
-  return { success: true, userId: updated.id };
+    revalidatePath('/users');
+    return { success: true, userId: updated.id };
+  } catch (error) {
+    console.error('Failed to deactivate user', error);
+    return { success: false, message: 'Gagal menonaktifkan akun.' };
+  }
 }
 
 export async function activateUser(input: z.infer<typeof activateUserSchema>) {
@@ -284,11 +310,11 @@ export async function activateUser(input: z.infer<typeof activateUserSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  const actorId = session.user.id;
-  if (!actorId) {
-    return { success: false, message: 'Tidak terautentikasi.' };
+  if (!actorRole || !canPerformAction(actorRole, 'users', 'update')) {
+    return { success: false, message: 'Anda tidak berwenang mengaktifkan akun.' };
   }
 
+  const actorId = session.user.id;
   const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.id } });
   if (!targetUser) {
     return { success: false, message: 'Akun tidak ditemukan.' };
@@ -299,31 +325,36 @@ export async function activateUser(input: z.infer<typeof activateUserSchema>) {
     return { success: false, message: permission.message };
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const current = await tx.user.update({
-      where: { id: parsed.data.id },
-      data: {
-        isActive: true,
-        isLocked: false,
-        lockedUntil: null,
-      },
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.user.update({
+        where: { id: parsed.data.id },
+        data: {
+          isActive: true,
+          isLocked: false,
+          lockedUntil: null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'UPDATE',
+          entity: 'User',
+          entityId: current.id,
+          description: `Mengaktifkan akun ${current.username}`,
+        },
+      });
+
+      return current;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actorId,
-        action: 'UPDATE',
-        entity: 'User',
-        entityId: current.id,
-        description: `Mengaktifkan akun ${current.username}`,
-      },
-    });
-
-    return current;
-  });
-
-  revalidatePath('/users');
-  return { success: true, userId: updated.id };
+    revalidatePath('/users');
+    return { success: true, userId: updated.id };
+  } catch (error) {
+    console.error('Failed to activate user', error);
+    return { success: false, message: 'Gagal mengaktifkan akun.' };
+  }
 }
 
 export async function resetPin(input: z.infer<typeof resetPinSchema>) {
@@ -339,11 +370,11 @@ export async function resetPin(input: z.infer<typeof resetPinSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  const actorId = session.user.id;
-  if (!actorId) {
-    return { success: false, message: 'Tidak terautentikasi.' };
+  if (!actorRole || !canPerformAction(actorRole, 'users', 'update')) {
+    return { success: false, message: 'Anda tidak berwenang mereset PIN.' };
   }
 
+  const actorId = session.user.id;
   const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.id } });
   if (!targetUser) {
     return { success: false, message: 'Akun tidak ditemukan.' };
@@ -357,33 +388,38 @@ export async function resetPin(input: z.infer<typeof resetPinSchema>) {
   const temporaryPin = generatePin();
   const pinHash = await bcrypt.hash(temporaryPin, 10);
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const current = await tx.user.update({
-      where: { id: parsed.data.id },
-      data: {
-        pinHash,
-        mustChangePin: true,
-        failedPinAttempts: 0,
-        isLocked: false,
-        lockedUntil: null,
-      },
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.user.update({
+        where: { id: parsed.data.id },
+        data: {
+          pinHash,
+          mustChangePin: true,
+          failedPinAttempts: 0,
+          isLocked: false,
+          lockedUntil: null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'UPDATE',
+          entity: 'User',
+          entityId: current.id,
+          description: `Mereset PIN akun ${current.username}`,
+        },
+      });
+
+      return current;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actorId,
-        action: 'UPDATE',
-        entity: 'User',
-        entityId: current.id,
-        description: `Mereset PIN akun ${current.username}`,
-      },
-    });
-
-    return current;
-  });
-
-  revalidatePath('/users');
-  return { success: true, userId: updated.id, temporaryPin };
+    revalidatePath('/users');
+    return { success: true, userId: updated.id, temporaryPin };
+  } catch (error) {
+    console.error('Failed to reset PIN', error);
+    return { success: false, message: 'Gagal mereset PIN.' };
+  }
 }
 
 export async function unlockUser(input: z.infer<typeof unlockUserSchema>) {
@@ -399,11 +435,11 @@ export async function unlockUser(input: z.infer<typeof unlockUserSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  const actorId = session.user.id;
-  if (!actorId) {
-    return { success: false, message: 'Tidak terautentikasi.' };
+  if (!actorRole || !canPerformAction(actorRole, 'users', 'update')) {
+    return { success: false, message: 'Anda tidak berwenang membuka kunci akun.' };
   }
 
+  const actorId = session.user.id;
   const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.id } });
   if (!targetUser) {
     return { success: false, message: 'Akun tidak ditemukan.' };
@@ -414,29 +450,34 @@ export async function unlockUser(input: z.infer<typeof unlockUserSchema>) {
     return { success: false, message: permission.message };
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const current = await tx.user.update({
-      where: { id: parsed.data.id },
-      data: {
-        isLocked: false,
-        lockedUntil: null,
-        failedPinAttempts: 0,
-      },
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.user.update({
+        where: { id: parsed.data.id },
+        data: {
+          isLocked: false,
+          lockedUntil: null,
+          failedPinAttempts: 0,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'UPDATE',
+          entity: 'User',
+          entityId: current.id,
+          description: `Membuka kunci akun ${current.username}`,
+        },
+      });
+
+      return current;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actorId,
-        action: 'UPDATE',
-        entity: 'User',
-        entityId: current.id,
-        description: `Membuka kunci akun ${current.username}`,
-      },
-    });
-
-    return current;
-  });
-
-  revalidatePath('/users');
-  return { success: true, userId: updated.id };
+    revalidatePath('/users');
+    return { success: true, userId: updated.id };
+  } catch (error) {
+    console.error('Failed to unlock user', error);
+    return { success: false, message: 'Gagal membuka kunci akun.' };
+  }
 }

@@ -8,6 +8,10 @@ import { prisma } from '@/lib/db';
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(80),
   phone: z.string().trim().max(30).optional().or(z.literal('')),
+  address: z.string().trim().max(200).optional().or(z.literal('')),
+  email: z.string().trim().email().max(100).optional().or(z.literal('')),
+  emergencyContact: z.string().trim().max(100).optional().or(z.literal('')),
+  photo: z.string().trim().max(500).optional().or(z.literal('')),
 });
 
 const changePinSchema = z.object({
@@ -22,16 +26,22 @@ export async function getProfileData() {
     return { success: false, message: 'Tidak terautentikasi.', data: null };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, username: true, name: true, phone: true, role: true },
-  });
+  const [user, customer] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, username: true, name: true, phone: true, role: true },
+    }),
+    prisma.customer.findFirst({
+      where: { userId: session.user.id },
+      select: { id: true, name: true, phone: true, email: true, address: true, emergencyContact: true, photo: true },
+    }),
+  ]);
 
   if (!user) {
     return { success: false, message: 'Data pengguna tidak ditemukan.', data: null };
   }
 
-  return { success: true, message: 'Profil berhasil dimuat.', data: { user } };
+  return { success: true, message: 'Profil berhasil dimuat.', data: { user, customer } };
 }
 
 export async function updateProfile(input: z.infer<typeof profileSchema>) {
@@ -46,15 +56,45 @@ export async function updateProfile(input: z.infer<typeof profileSchema>) {
     return { success: false, message: 'Tidak terautentikasi.', data: null };
   }
 
-  const user = await prisma.user.update({
-    where: { id: session.user.id },
-    data: {
-      name: parsed.data.name,
-      phone: parsed.data.phone || null,
-    },
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedUser = await tx.user.update({
+      where: { id: session.user.id },
+      data: {
+        name: parsed.data.name,
+        phone: parsed.data.phone || null,
+      },
+    });
+
+    const existingCustomer = await tx.customer.findFirst({ where: { userId: session.user.id } });
+
+    const customer = existingCustomer
+      ? await tx.customer.update({
+          where: { id: existingCustomer.id },
+          data: {
+            name: parsed.data.name,
+            phone: parsed.data.phone || null,
+            email: parsed.data.email || null,
+            address: parsed.data.address || null,
+            emergencyContact: parsed.data.emergencyContact || null,
+            photo: parsed.data.photo || null,
+          },
+        })
+      : await tx.customer.create({
+          data: {
+            userId: session.user.id,
+            name: parsed.data.name,
+            phone: parsed.data.phone || null,
+            email: parsed.data.email || null,
+            address: parsed.data.address || null,
+            emergencyContact: parsed.data.emergencyContact || null,
+            photo: parsed.data.photo || null,
+          },
+        });
+
+    return { user: updatedUser, customer };
   });
 
-  return { success: true, message: 'Profil berhasil disimpan.', data: { user } };
+  return { success: true, message: 'Profil berhasil disimpan.', data: result };
 }
 
 export async function changePin(input: z.infer<typeof changePinSchema>) {

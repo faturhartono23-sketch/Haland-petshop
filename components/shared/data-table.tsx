@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
 export type DataTableColumn<T> = {
@@ -14,12 +14,12 @@ type DataTableProps<T extends Record<string, unknown>> = {
   columns: DataTableColumn<T>[];
   rows: T[];
   emptyMessage?: string;
+  pageSize?: number;
 };
 
-export function DataTable<T extends Record<string, unknown>>({ title, columns, rows, emptyMessage = 'Tidak ada data.' }: DataTableProps<T>) {
+export function DataTable<T extends Record<string, unknown>>({ title, columns, rows, emptyMessage = 'Tidak ada data.', pageSize = 6 }: DataTableProps<T>) {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 6;
 
   const filteredRows = useMemo(() => {
     const q = query.toLowerCase();
@@ -32,6 +32,12 @@ export function DataTable<T extends Record<string, unknown>>({ title, columns, r
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">

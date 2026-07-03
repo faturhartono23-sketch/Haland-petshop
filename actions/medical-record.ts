@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
@@ -63,6 +64,18 @@ async function createAuditLog(userId: string, action: string, entity: string, en
       description,
     },
   });
+}
+
+async function notifyMedicalRecordChange(userId: string | null | undefined, title: string, message: string) {
+  if (!userId) {
+    return;
+  }
+
+  try {
+    await createNotification({ userId, title, message, type: 'medical-record' });
+  } catch {
+    // ignore notification failures to keep record creation resilient
+  }
 }
 
 function normalizeOptionalText(value: string | undefined | null) {
@@ -291,6 +304,9 @@ export async function createMedicalRecord(input: z.infer<typeof medicalRecordSch
     data: { status: 'DONE' },
   });
 
+  const customerUser = await prisma.customer.findUnique({ where: { id: appointment.customerId }, select: { userId: true } });
+  await notifyMedicalRecordChange(customerUser?.userId, 'Rekam medis dibuat', `Rekam medis untuk ${appointment.pet.name} telah dibuat.`);
+
   await createAuditLog(actorId, 'CREATE', 'MedicalRecord', record.id, `Membuat rekam medis ${record.recordNumber}`);
   revalidatePath('/medical-records');
   return { success: true, record };
@@ -355,6 +371,9 @@ export async function updateMedicalRecord(input: z.infer<typeof updateMedicalRec
     where: { id: existing.appointmentId },
     data: { status: 'DONE' },
   });
+
+  const customerUser = await prisma.customer.findUnique({ where: { id: existing.customerId }, select: { userId: true } });
+  await notifyMedicalRecordChange(customerUser?.userId, 'Rekam medis diperbarui', `Rekam medis untuk pasien Anda telah diperbarui.`);
 
   await createAuditLog(actorId, 'UPDATE', 'MedicalRecord', record.id, `Memperbarui rekam medis ${record.recordNumber}`);
   revalidatePath('/medical-records');

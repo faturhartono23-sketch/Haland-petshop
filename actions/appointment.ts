@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
@@ -40,6 +41,18 @@ function getActorId(session: any) {
 
 async function getCustomerForSession(sessionId: string) {
   return prisma.customer.findFirst({ where: { userId: sessionId } });
+}
+
+async function notifyAppointmentChange(userId: string | null | undefined, title: string, message: string) {
+  if (!userId) {
+    return;
+  }
+
+  try {
+    await createNotification({ userId, title, message, type: 'appointment' });
+  } catch {
+    // ignore notification errors so the appointment workflow remains resilient
+  }
 }
 
 async function validateAppointmentTime(date: Date) {
@@ -217,6 +230,8 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
       },
     });
 
+    await notifyAppointmentChange(actorId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`);
+
     revalidatePath('/portal/appointments');
     revalidatePath('/appointments');
     return { success: true, appointment };
@@ -256,6 +271,9 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
       requestedByCustomer: parsed.data.requestedByCustomer ?? false,
     },
   });
+
+  const customerUser = await prisma.customer.findUnique({ where: { id: parsed.data.customerId }, select: { userId: true } });
+  await notifyAppointmentChange(customerUser?.userId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`);
 
   revalidatePath('/appointments');
   revalidatePath('/dashboard');
@@ -300,6 +318,10 @@ export async function updateAppointment(input: z.infer<typeof updateAppointmentS
       data: { status: parsed.data.status ?? existing.status },
     });
 
+    const customerUser = await prisma.customer.findUnique({ where: { id: existing.customerId }, select: { userId: true } });
+    const petRecord = await prisma.pet.findUnique({ where: { id: existing.petId }, select: { name: true } });
+    await notifyAppointmentChange(customerUser?.userId, 'Status jadwal diperbarui', `Status jadwal untuk ${petRecord?.name ?? 'hewan Anda'} telah diperbarui.`);
+
     revalidatePath('/appointments');
     revalidatePath('/dashboard');
     return { success: true, appointment };
@@ -331,6 +353,10 @@ export async function updateAppointment(input: z.infer<typeof updateAppointmentS
       requestedByCustomer: parsed.data.requestedByCustomer ?? existing.requestedByCustomer,
     },
   });
+
+  const customerUser = await prisma.customer.findUnique({ where: { id: appointment.customerId }, select: { userId: true } });
+  const petRecord = await prisma.pet.findUnique({ where: { id: appointment.petId }, select: { name: true } });
+  await notifyAppointmentChange(customerUser?.userId, 'Jadwal diperbarui', `Jadwal pemeriksaan untuk ${petRecord?.name ?? 'hewan Anda'} telah diperbarui.`);
 
   revalidatePath('/appointments');
   revalidatePath('/dashboard');
@@ -378,6 +404,10 @@ export async function cancelAppointment(input: z.infer<typeof cancelAppointmentS
     where: { id: parsed.data.id },
     data: { status: 'CANCELLED' },
   });
+
+  const customerUser = await prisma.customer.findUnique({ where: { id: existing.customerId }, select: { userId: true } });
+  const petRecord = await prisma.pet.findUnique({ where: { id: existing.petId }, select: { name: true } });
+  await notifyAppointmentChange(customerUser?.userId, 'Jadwal dibatalkan', `Jadwal pemeriksaan untuk ${petRecord?.name ?? 'hewan Anda'} dibatalkan.`);
 
   revalidatePath('/appointments');
   revalidatePath('/portal/appointments');

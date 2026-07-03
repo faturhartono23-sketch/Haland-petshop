@@ -10,6 +10,7 @@ declare module 'next-auth' {
     user: DefaultSession['user'] & {
       id?: string;
       role?: string;
+      username?: string;
       mustChangePin?: boolean;
     };
   }
@@ -55,7 +56,16 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-          const user = await prisma.user.findUnique({ where: { username: parsed.data.username } });
+          const normalizedUsername = parsed.data.username.trim().toLowerCase();
+          const user = await prisma.user.findFirst({
+            where: {
+              username: {
+                equals: normalizedUsername,
+                mode: 'insensitive',
+              },
+            },
+          });
+
           if (!user) {
             return null;
           }
@@ -107,24 +117,24 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            failedPinAttempts: 0,
-            isLocked: false,
-            lockedUntil: null,
-          },
-        });
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              failedPinAttempts: 0,
+              isLocked: false,
+              lockedUntil: null,
+            },
+          });
 
-        await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login berhasil');
+          await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login berhasil');
 
-        return {
-          id: user.id,
-          name: user.name,
-          username: user.username,
-          role: user.role,
-          mustChangePin: user.mustChangePin,
-        };
+          return {
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            role: user.role,
+            mustChangePin: user.mustChangePin,
+          };
         } catch {
           return null;
         }
@@ -153,15 +163,17 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id as string;
         token.role = (user as { role?: string }).role as string;
+        token.username = (user as { username?: string }).username as string;
         token.mustChangePin = Boolean((user as { mustChangePin?: boolean }).mustChangePin);
       }
       return token;
     },
     async session({ session, token }: any) {
       if (session.user) {
-        (session.user as { id?: string; role?: string; mustChangePin?: boolean }).id = token.id as string;
-        (session.user as { id?: string; role?: string; mustChangePin?: boolean }).role = token.role as string;
-        (session.user as { id?: string; role?: string; mustChangePin?: boolean }).mustChangePin = Boolean(token.mustChangePin);
+        (session.user as { id?: string; role?: string; username?: string; mustChangePin?: boolean }).id = token.id as string;
+        (session.user as { id?: string; role?: string; username?: string; mustChangePin?: boolean }).role = token.role as string;
+        (session.user as { id?: string; role?: string; username?: string; mustChangePin?: boolean }).username = token.username as string;
+        (session.user as { id?: string; role?: string; username?: string; mustChangePin?: boolean }).mustChangePin = Boolean(token.mustChangePin);
       }
       return session;
     },

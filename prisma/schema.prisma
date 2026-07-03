@@ -11,9 +11,16 @@ datasource db {
 
 enum UserRole {
   OWNER
+  SUPER_ADMIN
+  ADMIN
   ADMIN_KLINIK
+  VETERINARIAN
+  CASHIER
+  RECEPTIONIST
+  STAFF
   DOKTER
   CUSTOMER
+  GUEST
 }
 
 enum AppointmentStatus {
@@ -105,12 +112,15 @@ model User {
 }
 
 model Customer {
-  id      String  @id @default(cuid())
-  userId  String? @unique
-  name    String
-  phone   String?
-  address String?
-  notes   String?
+  id               String  @id @default(cuid())
+  userId           String? @unique
+  name             String
+  phone            String?
+  email            String?
+  address          String?
+  emergencyContact String?
+  photo            String?
+  notes            String?
 
   user            User?            @relation(fields: [userId], references: [id])
   pets            Pet[]
@@ -398,12 +408,40 @@ model AuditLog {
 }
 
 model Settings {
-  id               String  @id @default(cuid())
-  clinicName       String?
-  logo             String?
-  address          String?
-  phone            String?
-  operationalHours String?
-  invoiceFormat    String?
-  currency         String?
+  id                    String  @id @default(cuid())
+  clinicName            String?
+  logo                  String?
+  address               String?
+  phone                 String?
+  email                 String?
+  website               String?
+  taxNumber             String?
+  operationalHours      String?
+  timezone              String?
+  currency              String?
+  language              String?
+  footerInfo            String?
+  receiptHeader         String?
+  receiptFooter         String?
+  appName               String?
+  appVersion            String?
+  dateFormat            String?
+  timeFormat            String?
+  numberFormat          String?
+  pagination            Int?
+  sessionTimeout        Int?
+  autoLogout            Boolean? @default(false)
+  defaultDashboard      String?
+  appointmentDuration   Int?
+  workingDays           String?
+  holidayRules          String?
+  invoicePrefix         String?
+  medicalRecordPrefix   String?
+  customerPrefix        String?
+  petPrefix             String?
+  posPrefix             String?
+  bookingPrefix         String?
+  receiptPrefix         String?
+  autoNumbering         Boolean? @default(true)
+  theme                 String?
 }

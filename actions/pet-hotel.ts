@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createInvoice } from '@/actions/invoice';
+import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
@@ -95,6 +96,18 @@ async function createAuditLog(userId: string, action: string, entity: string, en
 
 async function getCustomerForSession(sessionId: string) {
   return prisma.customer.findFirst({ where: { userId: sessionId } });
+}
+
+async function notifyPetHotelChange(userId: string | null | undefined, title: string, message: string) {
+  if (!userId) {
+    return;
+  }
+
+  try {
+    await createNotification({ userId, title, message, type: 'pet-hotel' });
+  } catch {
+    // ignore notification errors so booking flows stay resilient
+  }
 }
 
 async function findConflictingBooking(roomId: string, checkInDate: Date, checkOutDate: Date, excludeId?: string) {
@@ -424,6 +437,9 @@ export async function createPetHotelBooking(input: z.infer<typeof petHotelBookin
     await syncRoomStatus(booking.roomId);
   }
 
+  const customer = await prisma.customer.findFirst({ where: { id: pet.customerId }, select: { userId: true } });
+  await notifyPetHotelChange(customer?.userId, 'Reservasi pet hotel dibuat', `Reservasi pet hotel untuk ${pet.name} berhasil dibuat.`);
+
   revalidatePath('/portal/pet-hotel');
   revalidatePath('/pet-hotel');
   return { success: true, booking };
@@ -693,6 +709,8 @@ export async function checkInPetHotelBooking(id: string) {
   });
 
   await syncRoomStatus(roomId);
+  const customer = await prisma.customer.findFirst({ where: { id: booking.pet.customerId }, select: { userId: true } });
+  await notifyPetHotelChange(customer?.userId, 'Check-in pet hotel', `Status reservasi ${booking.id} telah berubah menjadi check-in.`);
   revalidatePath('/pet-hotel');
   return { success: true, booking: updated };
 }
@@ -749,6 +767,9 @@ export async function checkOutPetHotelBooking(id: string) {
   if (booking.roomId) {
     await syncRoomStatus(booking.roomId);
   }
+
+  const customer = await prisma.customer.findFirst({ where: { id: booking.pet.customerId }, select: { userId: true } });
+  await notifyPetHotelChange(customer?.userId, 'Check-out pet hotel', `Reservasi pet hotel untuk ${booking.pet.name} telah selesai.`);
 
   await createInvoice({
     customerId: booking.pet.customerId,

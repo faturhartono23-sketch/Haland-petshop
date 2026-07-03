@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 const searchSchema = z.object({
-  query: z.string().trim().min(1),
+  query: z.string().trim().min(1).max(80),
 });
 
 function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
@@ -43,78 +43,84 @@ export async function searchGlobal(input: z.infer<typeof searchSchema>) {
   }
 
   const q = parsed.data.query;
+  const likeQuery = { contains: q, mode: 'insensitive' as const };
+
   const customerFilter = {
     OR: [
-      { name: { contains: q } },
-      { phone: { contains: q } },
+      { name: likeQuery },
+      { phone: likeQuery },
+      { email: likeQuery },
     ],
   };
 
   const petFilter = {
     OR: [
-      { name: { contains: q } },
-      { species: { contains: q } },
-      { breed: { contains: q } },
+      { name: likeQuery },
+      { species: likeQuery },
+      { breed: likeQuery },
     ],
   };
 
   const appointmentFilter = {
     OR: [
-      { pet: { is: { name: { contains: q } } } },
-      { customer: { is: { name: { contains: q } } } },
+      { pet: { is: { name: likeQuery } } },
+      { customer: { is: { name: likeQuery } } },
     ],
   };
 
   const invoiceFilter = {
     OR: [
-      { invoiceNumber: { contains: q } },
-      { customer: { is: { name: { contains: q } } } },
+      { invoiceNumber: likeQuery },
+      { customer: { is: { name: likeQuery } } },
+      { notes: likeQuery },
     ],
   };
 
   const productFilter = {
     OR: [
-      { name: { contains: q } },
-      { sku: { contains: q } },
-      { barcode: { contains: q } },
+      { name: likeQuery },
+      { sku: likeQuery },
+      { barcode: likeQuery },
+      { description: likeQuery },
     ],
   };
 
-  const customers = await prisma.customer.findMany({
-    where: isDoctor(actorRole)
-      ? { AND: [customerFilter, { appointments: { some: { doctorId: actorId } } }] }
-      : customerFilter,
-    orderBy: { name: 'asc' },
-    select: { id: true, name: true, phone: true },
-    take: 5,
-  });
+  const baseWhere = isDoctor(actorRole)
+    ? {
+        AND: [
+          { appointments: { some: { doctorId: actorId } } },
+        ],
+      }
+    : {};
 
-  const pets = await prisma.pet.findMany({
-    where: isDoctor(actorRole)
-      ? { AND: [petFilter, { customer: { appointments: { some: { doctorId: actorId } } } }] }
-      : petFilter,
-    orderBy: { name: 'asc' },
-    select: { id: true, name: true, species: true, customer: { select: { name: true } } },
-    take: 5,
-  });
-
-  const appointments = await prisma.appointment.findMany({
-    where: isDoctor(actorRole)
-      ? { AND: [appointmentFilter, { doctorId: actorId }] }
-      : appointmentFilter,
-    orderBy: { date: 'desc' },
-    select: { id: true, date: true, status: true, pet: { select: { name: true } }, customer: { select: { name: true } } },
-    take: 5,
-  });
-
-  const medicalRecords = await prisma.medicalRecord.findMany({
-    where: isDoctor(actorRole)
-      ? { doctorId: actorId, OR: [{ diagnosis: { contains: q } }, { treatment: { contains: q } }, { prescription: { contains: q } }] }
-      : { OR: [{ diagnosis: { contains: q } }, { treatment: { contains: q } }, { prescription: { contains: q } }] },
-    orderBy: { date: 'desc' },
-    select: { id: true, diagnosis: true, treatment: true, pet: { select: { name: true } } },
-    take: 5,
-  });
+  const [customers, pets, appointments, medicalRecords] = await Promise.all([
+    prisma.customer.findMany({
+      where: isDoctor(actorRole) ? { AND: [customerFilter, baseWhere] } : customerFilter,
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, phone: true },
+      take: 5,
+    }),
+    prisma.pet.findMany({
+      where: isDoctor(actorRole) ? { AND: [petFilter, { customer: { appointments: { some: { doctorId: actorId } } } }] } : petFilter,
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, species: true, customer: { select: { name: true } } },
+      take: 5,
+    }),
+    prisma.appointment.findMany({
+      where: isDoctor(actorRole) ? { AND: [appointmentFilter, { doctorId: actorId }] } : appointmentFilter,
+      orderBy: { date: 'desc' },
+      select: { id: true, date: true, status: true, pet: { select: { name: true } }, customer: { select: { name: true } } },
+      take: 5,
+    }),
+    prisma.medicalRecord.findMany({
+      where: isDoctor(actorRole)
+        ? { doctorId: actorId, OR: [{ diagnosis: likeQuery }, { treatment: likeQuery }, { prescription: likeQuery }, { chiefComplaint: likeQuery }] }
+        : { OR: [{ diagnosis: likeQuery }, { treatment: likeQuery }, { prescription: likeQuery }, { chiefComplaint: likeQuery }] },
+      orderBy: { date: 'desc' },
+      select: { id: true, diagnosis: true, treatment: true, pet: { select: { name: true } } },
+      take: 5,
+    }),
+  ]);
 
   const results = [
     {
@@ -156,19 +162,20 @@ export async function searchGlobal(input: z.infer<typeof searchSchema>) {
   ];
 
   if (!isDoctor(actorRole)) {
-    const invoices = await prisma.invoice.findMany({
-      where: invoiceFilter,
-      orderBy: { date: 'desc' },
-      select: { id: true, invoiceNumber: true, totalAmount: true },
-      take: 5,
-    });
-
-    const products = await prisma.product.findMany({
-      where: productFilter,
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, stock: true },
-      take: 5,
-    });
+    const [invoices, products] = await Promise.all([
+      prisma.invoice.findMany({
+        where: invoiceFilter,
+        orderBy: { date: 'desc' },
+        select: { id: true, invoiceNumber: true, totalAmount: true },
+        take: 5,
+      }),
+      prisma.product.findMany({
+        where: productFilter,
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, stock: true },
+        take: 5,
+      }),
+    ]);
 
     results.push({
       category: 'Invoice',
