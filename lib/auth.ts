@@ -1,5 +1,6 @@
 import { getServerSession } from 'next-auth/next';
 import type { DefaultSession, NextAuthOptions, Session } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -16,10 +17,26 @@ declare module 'next-auth' {
   }
 }
 
+declare module 'next-auth/jwt' {
+  interface JWT {
+    id?: string;
+    role?: string;
+    username?: string;
+    mustChangePin?: boolean;
+    revoked?: boolean;
+  }
+}
+
 const loginSchema = z.object({
   username: z.string().trim().min(1),
   pin: z.string().trim().min(1),
 });
+
+const nextAuthSecret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
+
+if (!nextAuthSecret) {
+  throw new Error('Missing NEXTAUTH_SECRET or AUTH_SECRET');
+}
 
 async function createAuditLog(userId: string, action: string, entity: string, entityId: string | null, description: string | null) {
   await prisma.auditLog.create({
@@ -33,8 +50,24 @@ async function createAuditLog(userId: string, action: string, entity: string, en
   });
 }
 
+async function getFreshUser(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      role: true,
+      isActive: true,
+      isLocked: true,
+      lockedUntil: true,
+      mustChangePin: true,
+    },
+  });
+}
+
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET ?? 'change-me-in-production',
+  secret: nextAuthSecret,
   session: {
     strategy: 'jwt',
     maxAge: 60 * 60 * 24 * 30,
@@ -159,17 +192,30 @@ export const authOptions: NextAuthOptions = {
     },
   },
   callbacks: {
-    async jwt({ token, user }: any) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id as string;
         token.role = (user as { role?: string }).role as string;
         token.username = (user as { username?: string }).username as string;
         token.mustChangePin = Boolean((user as { mustChangePin?: boolean }).mustChangePin);
       }
+
+      if (token.id && !token.revoked) {
+        const freshUser = await getFreshUser(token.id as string);
+        if (!freshUser || !freshUser.isActive || freshUser.isLocked) {
+          token.revoked = true;
+          return token;
+        }
+
+        token.role = freshUser.role;
+        token.username = freshUser.username;
+        token.mustChangePin = Boolean(freshUser.mustChangePin);
+      }
+
       return token;
     },
-    async session({ session, token }: any) {
-      if (session.user) {
+    async session({ session, token }) {
+      if (session.user && !token.revoked) {
         (session.user as { id?: string; role?: string; username?: string; mustChangePin?: boolean }).id = token.id as string;
         (session.user as { id?: string; role?: string; username?: string; mustChangePin?: boolean }).role = token.role as string;
         (session.user as { id?: string; role?: string; username?: string; mustChangePin?: boolean }).username = token.username as string;

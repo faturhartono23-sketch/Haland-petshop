@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { isStaffRole } from '@/lib/permissions';
 
 const searchSchema = z.object({
   query: z.string().trim().min(1).max(80),
@@ -14,10 +15,6 @@ function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
 
 function getActorId(session: Awaited<ReturnType<typeof auth>>) {
   return session?.user?.id;
-}
-
-function isStaff(role?: string) {
-  return role === 'OWNER' || role === 'ADMIN_KLINIK' || role === 'DOKTER';
 }
 
 function isDoctor(role?: string) {
@@ -38,7 +35,7 @@ export async function searchGlobal(input: z.infer<typeof searchSchema>) {
     return { success: false, message: 'Tidak terautentikasi.', data: null };
   }
 
-  if (!isStaff(actorRole)) {
+  if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melakukan pencarian global.', data: null };
   }
 

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { canManageTargetRole, canPerformAction, type Role } from '@/lib/permissions';
 
 const createUserSchema = z.object({
   username: z.string().trim().min(3).max(30).regex(/^[a-z0-9_]+$/),
@@ -37,12 +38,9 @@ export async function createUser(input: z.infer<typeof createUserSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole === 'ADMIN_KLINIK' && parsed.data.role !== 'CUSTOMER') {
-    return { success: false, message: 'Admin Klinik hanya dapat membuat akun Customer.' };
-  }
-
-  if (actorRole === 'DOKTER' || actorRole === 'CUSTOMER') {
-    return { success: false, message: 'Role Anda tidak boleh membuat akun.' };
+  const permission = canManageTargetRole(actorRole, parsed.data.role as Role);
+  if (!permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const existing = await prisma.user.findUnique({ where: { username: parsed.data.username } });
@@ -81,15 +79,18 @@ export async function resetPin(input: z.infer<typeof resetPinSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole === 'OWNER') {
-    // Owner can reset any user.
-  } else if (actorRole === 'ADMIN_KLINIK') {
-    const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.userId } });
-    if (!targetUser || targetUser.role !== 'CUSTOMER') {
-      return { success: false, message: 'Admin Klinik hanya dapat reset PIN Customer.' };
-    }
-  } else {
+  if (!canPerformAction(actorRole, 'users', 'update')) {
     return { success: false, message: 'Anda tidak berwenang melakukan reset PIN.' };
+  }
+
+  const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.userId } });
+  if (!targetUser) {
+    return { success: false, message: 'Akun tidak ditemukan.' };
+  }
+
+  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
+  if (!permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const temporaryPin = generatePin();
@@ -122,7 +123,7 @@ export async function unlockUser(input: z.infer<typeof unlockUserSchema>) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole !== 'OWNER' && actorRole !== 'ADMIN_KLINIK') {
+  if (!canPerformAction(actorRole, 'users', 'update')) {
     return { success: false, message: 'Anda tidak berwenang membuka kunci akun.' };
   }
 

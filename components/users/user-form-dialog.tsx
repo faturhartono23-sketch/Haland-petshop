@@ -26,16 +26,9 @@ type UserFormDialogProps = {
 
 const allRoleOptions: Array<{ value: Role; label: string }> = [
   { value: 'CUSTOMER', label: 'Customer' },
-  { value: 'GUEST', label: 'Guest' },
-  { value: 'RECEPTIONIST', label: 'Receptionist' },
-  { value: 'STAFF', label: 'Staff' },
-  { value: 'CASHIER', label: 'Cashier' },
   { value: 'ADMIN_KLINIK', label: 'Admin Klinik' },
-  { value: 'ADMIN', label: 'Admin' },
-  { value: 'VETERINARIAN', label: 'Veterinarian' },
   { value: 'DOKTER', label: 'Doctor' },
   { value: 'OWNER', label: 'Owner' },
-  { value: 'SUPER_ADMIN', label: 'Super Admin' },
 ];
 
 const emptyValues = (): UserFormValues => ({
@@ -56,11 +49,11 @@ export function UserFormDialog({ open, mode, initialValues, submitting = false, 
       return [{ value: 'CUSTOMER' as Role, label: 'Customer' }];
     }
 
-    if (actorRole === 'OWNER' || actorRole === 'SUPER_ADMIN') {
+    if (actorRole === 'OWNER') {
       return allRoleOptions;
     }
 
-    if (actorRole === 'ADMIN' || actorRole === 'ADMIN_KLINIK') {
+    if (actorRole === 'ADMIN_KLINIK') {
       return [{ value: 'CUSTOMER' as Role, label: 'Customer' }];
     }
 

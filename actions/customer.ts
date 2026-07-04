@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createUser } from '@/actions/auth';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { canAccessModule, isStaffRole } from '@/lib/permissions';
 
 const customerSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -27,18 +28,17 @@ function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
   return (session?.user as { role?: string } | undefined)?.role;
 }
 
-async function ensureStaffAccess(actorRole: string | undefined) {
+function ensureStaffAccess(actorRole: string | undefined) {
   if (!actorRole) {
     return { allowed: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole === 'OWNER' || actorRole === 'ADMIN_KLINIK') {
+  if (isStaffRole(actorRole) && canAccessModule(actorRole, 'customers')) {
     return { allowed: true };
   }
 
   return { allowed: false, message: 'Anda tidak berwenang mengelola data pelanggan.' };
 }
-
 async function buildUsername(name: string) {
   const seed = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'customer';
   let username = seed;

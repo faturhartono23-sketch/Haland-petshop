@@ -5,14 +5,14 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { canPerformAction, type Role } from '@/lib/permissions';
+import { canManageTargetRole, canPerformAction, type Role } from '@/lib/permissions';
 
 type UserRole = Role;
 
 const userInputSchema = z.object({
   username: z.string().trim().min(3).max(30).regex(/^[a-z0-9_]+$/),
   name: z.string().trim().min(2).max(80),
-  role: z.enum(['OWNER', 'SUPER_ADMIN', 'ADMIN', 'ADMIN_KLINIK', 'VETERINARIAN', 'CASHIER', 'RECEPTIONIST', 'STAFF', 'DOKTER', 'CUSTOMER', 'GUEST']),
+  role: z.enum(['OWNER', 'ADMIN_KLINIK', 'DOKTER', 'CUSTOMER']),
   phone: z.string().trim().max(20).optional().or(z.literal('')),
   isActive: z.boolean().optional(),
 });
@@ -47,22 +47,6 @@ function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
 
 function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
-}
-
-function canManageTarget(actorRole: Role | undefined, targetRole: UserRole) {
-  if (!actorRole) {
-    return { allowed: false, message: 'Tidak terautentikasi.' };
-  }
-
-  if (actorRole === 'OWNER' || actorRole === 'SUPER_ADMIN') {
-    return { allowed: true };
-  }
-
-  if ((actorRole === 'ADMIN' || actorRole === 'ADMIN_KLINIK') && targetRole === 'CUSTOMER') {
-    return { allowed: true };
-  }
-
-  return { allowed: false, message: 'Anda tidak berwenang mengelola akun tersebut.' };
 }
 
 export async function listUsers() {
@@ -116,7 +100,7 @@ export async function createUser(input: z.infer<typeof userInputSchema>) {
     return { success: false, message: 'Anda tidak berwenang membuat akun.' };
   }
 
-  const permission = canManageTarget(actorRole, parsed.data.role);
+  const permission = canManageTargetRole(actorRole, parsed.data.role);
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -190,13 +174,14 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
     return { success: false, message: 'Akun tidak ditemukan.' };
   }
 
-  const permission = canManageTarget(actorRole, targetUser.role);
+  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
 
-  if ((actorRole === 'ADMIN' || actorRole === 'ADMIN_KLINIK') && parsed.data.role !== 'CUSTOMER') {
-    return { success: false, message: 'Admin hanya dapat mengubah akun Customer.' };
+  const rolePermission = canManageTargetRole(actorRole, parsed.data.role as Role);
+  if (!rolePermission.allowed) {
+    return { success: false, message: rolePermission.message };
   }
 
   try {
@@ -260,7 +245,7 @@ export async function deleteUser(input: z.infer<typeof deleteUserSchema>) {
     return { success: false, message: 'Tidak dapat menonaktifkan akun sendiri.' };
   }
 
-  const permission = canManageTarget(actorRole, targetUser.role);
+  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -320,7 +305,7 @@ export async function activateUser(input: z.infer<typeof activateUserSchema>) {
     return { success: false, message: 'Akun tidak ditemukan.' };
   }
 
-  const permission = canManageTarget(actorRole, targetUser.role);
+  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -380,7 +365,7 @@ export async function resetPin(input: z.infer<typeof resetPinSchema>) {
     return { success: false, message: 'Akun tidak ditemukan.' };
   }
 
-  const permission = canManageTarget(actorRole, targetUser.role);
+  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -445,7 +430,7 @@ export async function unlockUser(input: z.infer<typeof unlockUserSchema>) {
     return { success: false, message: 'Akun tidak ditemukan.' };
   }
 
-  const permission = canManageTarget(actorRole, targetUser.role);
+  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }

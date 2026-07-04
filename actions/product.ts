@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { isStaffRole } from '@/lib/permissions';
 
 const productSchema = z.object({
   name: z.string().trim().min(1, 'Nama produk wajib diisi.').max(200),
@@ -53,10 +54,6 @@ function getActorId(session: Awaited<ReturnType<typeof auth>>) {
   return session?.user?.id;
 }
 
-function isStaff(role?: string) {
-  return role === 'OWNER' || role === 'ADMIN_KLINIK';
-}
-
 function normalizeOptionalText(value: string | undefined | null) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -102,7 +99,7 @@ export async function listProductCategories() {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
   }
 
@@ -123,7 +120,7 @@ export async function createProductCategory(input: z.infer<typeof categorySchema
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membuat kategori.' };
   }
 
@@ -145,7 +142,7 @@ export async function updateProductCategory(input: z.infer<typeof updateCategory
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengubah kategori.' };
   }
 
@@ -179,7 +176,7 @@ export async function listSuppliers() {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
   }
 
@@ -200,7 +197,7 @@ export async function createSupplier(input: z.infer<typeof supplierSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membuat supplier.' };
   }
 
@@ -222,7 +219,7 @@ export async function updateSupplier(input: z.infer<typeof updateSupplierSchema>
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengubah supplier.' };
   }
 
@@ -256,7 +253,7 @@ export async function listProducts() {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
   }
 
@@ -278,7 +275,7 @@ export async function createProduct(input: z.infer<typeof productSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membuat produk.' };
   }
 
@@ -344,7 +341,7 @@ export async function updateProduct(input: z.infer<typeof updateProductSchema>) 
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengubah produk.' };
   }
 
@@ -405,7 +402,7 @@ export async function archiveProduct(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengarsipkan produk.' };
   }
 
@@ -438,7 +435,7 @@ export async function restoreProduct(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengembalikan produk.' };
   }
 

@@ -62,12 +62,31 @@ async function main() {
 
   console.log('✅ Doctor user created:', doctor.username);
 
+  // Create a sample customer user for portal access
+  const customerUserPinHash = await bcrypt.hash('1234', 10);
+  const customerUser = await prisma.user.upsert({
+    where: { username: 'customer' },
+    update: {},
+    create: {
+      username: 'customer',
+      name: 'Customer Demo',
+      pinHash: customerUserPinHash,
+      role: 'CUSTOMER',
+      isActive: true,
+      mustChangePin: true,
+      createdById: owner.id,
+    },
+  });
+
+  console.log('✅ Customer user created:', customerUser.username);
+
   // Create sample customer
   const customer = await prisma.customer.upsert({
     where: { id: 'cust-001' },
     update: {},
     create: {
       id: 'cust-001',
+      userId: customerUser.id,
       name: 'John Doe',
       phone: '081234567890',
       address: 'Jakarta, Indonesia',
@@ -222,9 +241,10 @@ async function main() {
   console.log('✨ Seeding completed successfully!');
   console.log('');
   console.log('📝 Default User Credentials:');
-  console.log('   Owner  - Username: owner   | PIN: 1234');
-  console.log('   Admin  - Username: admin   | PIN: 1234');
-  console.log('   Doctor - Username: dr_budi | PIN: 1234');
+  console.log('   Owner    - Username: owner     | PIN: 1234');
+  console.log('   Admin    - Username: admin     | PIN: 1234');
+  console.log('   Doctor   - Username: dr_budi   | PIN: 1234');
+  console.log('   Customer - Username: customer  | PIN: 1234');
   console.log('');
   console.log('⚠️  GANTI PIN SETELAH PERTAMA KALI LOGIN');
 }

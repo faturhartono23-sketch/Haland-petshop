@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { isStaffRole } from '@/lib/permissions';
 import { calculatePosTotals, getPaymentStatus, roundCurrency } from '@/lib/pos';
 
 const productSearchSchema = z.object({
@@ -33,10 +34,6 @@ function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
   return (session?.user as { role?: string } | undefined)?.role;
 }
 
-function isStaff(role?: string) {
-  return role === 'OWNER' || role === 'ADMIN_KLINIK';
-}
-
 function normalizeSearchQuery(query: string) {
   return query.trim().toLowerCase();
 }
@@ -50,7 +47,7 @@ export async function searchProducts(input: z.infer<typeof productSearchSchema>)
     return { success: false, message: 'Query pencarian tidak valid.' };
   }
 
-  if (!isStaff(actorRole)) {
+  if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mencari produk.' };
   }
 
@@ -106,7 +103,7 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
     return { success: false, message: 'Data transaksi tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melakukan penjualan POS.' };
   }
 

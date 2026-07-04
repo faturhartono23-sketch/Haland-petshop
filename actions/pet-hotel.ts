@@ -6,6 +6,7 @@ import { createInvoice } from '@/actions/invoice';
 import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { isStaffRole } from '@/lib/permissions';
 
 const petHotelRoomSchema = z.object({
   name: z.string().trim().min(1, 'Nama kamar wajib diisi.').max(100),
@@ -53,10 +54,6 @@ function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
 
 function getActorId(session: Awaited<ReturnType<typeof auth>>) {
   return session?.user?.id;
-}
-
-function isStaff(role?: string) {
-  return role === 'OWNER' || role === 'ADMIN_KLINIK';
 }
 
 function normalizeOptionalText(value: string | undefined | null) {
@@ -200,7 +197,7 @@ export async function listPetHotelPets() {
     return { success: true, pets };
   }
 
-  if (!isStaff(actorRole)) {
+  if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat daftar hewan.' };
   }
 
@@ -222,7 +219,7 @@ export async function createPetHotelRoom(input: z.infer<typeof petHotelRoomSchem
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membuat kamar.' };
   }
 
@@ -253,7 +250,7 @@ export async function updatePetHotelRoom(input: z.infer<typeof updatePetHotelRoo
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengubah kamar.' };
   }
 
@@ -380,7 +377,7 @@ export async function createPetHotelBooking(input: z.infer<typeof petHotelBookin
     if (!customer || pet.customerId !== customer.id) {
       return { success: false, message: 'Hewan yang dipilih tidak milik Anda.' };
     }
-  } else if (!isStaff(actorRole)) {
+  } else if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membuat reservasi.' };
   }
 
@@ -455,7 +452,7 @@ export async function updatePetHotelBooking(input: z.infer<typeof updatePetHotel
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengubah reservasi.' };
   }
 
@@ -559,7 +556,7 @@ export async function cancelPetHotelBooking(id: string) {
     if (booking.status !== 'BOOKED') {
       return { success: false, message: 'Hanya reservasi yang belum check-in yang bisa dibatalkan.' };
     }
-  } else if (!isStaff(actorRole)) {
+  } else if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membatalkan reservasi.' };
   }
 
@@ -600,7 +597,7 @@ export async function deletePetHotelBooking(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang menghapus reservasi.' };
   }
 
@@ -640,13 +637,16 @@ export async function checkInPetHotelBooking(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melakukan check-in.' };
   }
 
   const booking = await prisma.petHotelBooking.findUnique({
     where: { id },
-    include: { pet: { select: { id: true, name: true } }, room: { select: { id: true, name: true, status: true, maintenanceStatus: true } } },
+    include: {
+      pet: { select: { id: true, name: true, customerId: true } },
+      room: { select: { id: true, name: true, status: true, maintenanceStatus: true } },
+    },
   });
 
   if (!booking) {
@@ -720,7 +720,7 @@ export async function checkOutPetHotelBooking(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melakukan check-out.' };
   }
 
@@ -793,7 +793,7 @@ export async function createPetHotelLog(input: z.infer<typeof petHotelLogSchema>
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membuat log.' };
   }
 

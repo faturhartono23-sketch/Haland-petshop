@@ -11,16 +11,9 @@ datasource db {
 
 enum UserRole {
   OWNER
-  SUPER_ADMIN
-  ADMIN
   ADMIN_KLINIK
-  VETERINARIAN
-  CASHIER
-  RECEPTIONIST
-  STAFF
   DOKTER
   CUSTOMER
-  GUEST
 }
 
 enum AppointmentStatus {

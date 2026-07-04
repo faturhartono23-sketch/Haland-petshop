@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { isStaffRole } from '@/lib/permissions';
 
 const stockMovementSchema = z.object({
   productId: z.string().trim().min(1, 'Produk wajib dipilih.'),
@@ -18,10 +19,6 @@ function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
 
 function getActorId(session: Awaited<ReturnType<typeof auth>>) {
   return session?.user?.id;
-}
-
-function isStaff(role?: string) {
-  return role === 'OWNER' || role === 'ADMIN_KLINIK';
 }
 
 function normalizeOptionalText(value: string | undefined | null) {
@@ -47,7 +44,7 @@ export async function listInventory() {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
   }
 
@@ -73,7 +70,7 @@ export async function recordStockMovement(input: z.infer<typeof stockMovementSch
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mencatat pergerakan stok.' };
   }
 
@@ -138,7 +135,7 @@ export async function listStockMovements(productId: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
   }
 
@@ -155,7 +152,7 @@ export async function getLowStockSummary() {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
   }
 

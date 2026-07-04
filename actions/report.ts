@@ -3,8 +3,7 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-
-const STAFF_ROLES = ['OWNER', 'ADMIN_KLINIK', 'DOKTER'];
+import { isStaffRole } from '@/lib/permissions';
 const REPORT_TYPES = [
   'revenue',
   'appointments',
@@ -50,6 +49,8 @@ function getActorId(session: Awaited<ReturnType<typeof auth>>) {
 function isDoctor(role?: string) {
   return role === 'DOKTER';
 }
+
+const STAFF_ROLES = ['OWNER', 'ADMIN_KLINIK', 'DOKTER'];
 
 function normalizeOptional(value: string | undefined | null) {
   if (typeof value !== 'string') return '';

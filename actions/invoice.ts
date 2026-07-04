@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { isStaffRole } from '@/lib/permissions';
 
 const invoiceItemSchema = z.object({
   type: z.enum(['KONSULTASI', 'TINDAKAN', 'OBAT', 'PET_HOTEL', 'PRODUK']),
@@ -41,10 +42,6 @@ function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
 
 function getActorId(session: Awaited<ReturnType<typeof auth>>) {
   return session?.user?.id;
-}
-
-function isStaff(role?: string) {
-  return role === 'OWNER' || role === 'ADMIN_KLINIK';
 }
 
 function roundCurrency(value: number) {
@@ -85,7 +82,7 @@ export async function getInvoiceLookups() {
   const session = await auth();
   const actorRole = getActorRole(session);
 
-  if (!isStaff(actorRole)) {
+  if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengakses data ini.' };
   }
 
@@ -103,7 +100,7 @@ export async function listInvoices() {
   const session = await auth();
   const actorRole = getActorRole(session);
 
-  if (!isStaff(actorRole)) {
+  if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat invoice.' };
   }
 
@@ -123,7 +120,7 @@ export async function getInvoiceById(id: string) {
   const session = await auth();
   const actorRole = getActorRole(session);
 
-  if (!isStaff(actorRole)) {
+  if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang melihat invoice.' };
   }
 
@@ -153,7 +150,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     return { success: false, message: 'Data invoice tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membuat invoice.' };
   }
 
@@ -277,7 +274,7 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
     return { success: false, message: 'Data pembayaran tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mencatat pembayaran.' };
   }
 
@@ -346,7 +343,7 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaff(actorRole)) {
+  if (!actorId || !isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang membatalkan invoice.' };
   }
 
@@ -382,7 +379,7 @@ export async function getStaffBillingSummary() {
   const session = await auth();
   const actorRole = getActorRole(session);
 
-  if (!isStaff(actorRole)) {
+  if (!isStaffRole(actorRole)) {
     return { success: false, message: 'Anda tidak berwenang mengakses ringkasan ini.' };
   }
 
