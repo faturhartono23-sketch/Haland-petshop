@@ -15,7 +15,8 @@ export default function LoginPage() {
   useEffect(() => {
     if (session?.user?.id) {
       const role = (session.user as { role?: string } | undefined)?.role;
-      router.replace(role === 'CUSTOMER' ? '/portal' : '/dashboard');
+      const mustChangePin = Boolean((session.user as { mustChangePin?: boolean } | undefined)?.mustChangePin);
+      router.replace(mustChangePin ? '/change-pin' : role === 'CUSTOMER' ? '/portal' : '/dashboard');
     }
   }, [router, session]);
 
@@ -34,7 +35,8 @@ export default function LoginPage() {
       if (result?.ok) {
         const activeSession = await getSession();
         const role = (activeSession?.user as { role?: string } | undefined)?.role;
-        router.replace(role === 'CUSTOMER' ? '/portal' : '/dashboard');
+        const mustChangePin = Boolean((activeSession?.user as { mustChangePin?: boolean } | undefined)?.mustChangePin);
+        router.replace(mustChangePin ? '/change-pin' : role === 'CUSTOMER' ? '/portal' : '/dashboard');
         return;
       }
 

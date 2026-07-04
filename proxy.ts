@@ -21,11 +21,7 @@ const CUSTOMER_PREFIXES = ['/portal'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const publicRoutes = ['/login', '/change-pin', '/api/auth', '/_next', '/favicon.ico'];
-
-  if (publicRoutes.some((route) => pathname.startsWith(route))) {
-    return NextResponse.next();
-  }
+  const publicRoutes = ['/login', '/api/auth', '/_next', '/favicon.ico'];
 
   const token = await getToken({
     req: request,
@@ -36,6 +32,18 @@ export async function proxy(request: NextRequest) {
   const isAuthenticated = Boolean(token?.sub);
 
   if (pathname === '/') {
+    return NextResponse.next();
+  }
+
+  if (pathname === '/change-pin' || pathname.startsWith('/change-pin/')) {
+    if (!isAuthenticated) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    return NextResponse.next();
+  }
+
+  if (publicRoutes.some((route) => pathname.startsWith(route))) {
     return NextResponse.next();
   }
 

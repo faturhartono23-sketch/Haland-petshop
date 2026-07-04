@@ -14,9 +14,11 @@ const profileSchema = z.object({
   photo: z.string().trim().max(500).optional().or(z.literal('')),
 });
 
+const pinSchema = z.string().trim().regex(/^\d{6}$/, 'PIN harus 6 digit.');
+
 const changePinSchema = z.object({
-  currentPin: z.string().trim().min(6),
-  newPin: z.string().trim().min(6),
+  currentPin: pinSchema,
+  newPin: pinSchema,
 });
 
 export async function getProfileData() {
