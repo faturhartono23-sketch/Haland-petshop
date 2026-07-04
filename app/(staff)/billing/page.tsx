@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { CreditCard, FileIcon, Printer, Plus, Trash2, Wallet } from 'lucide-react';
 import { DataTable } from '@/components/shared/data-table';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -48,10 +49,12 @@ export default function BillingPage() {
   const [message, setMessage] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const searchParams = useSearchParams();
   const [form, setForm] = useState({
     customerId: '',
     appointmentId: '',
     medicalRecordId: '',
+    petId: '',
     discountAmount: '0',
     taxRate: '0',
     notes: '',
@@ -141,6 +144,7 @@ export default function BillingPage() {
       customerId: form.customerId,
       appointmentId: form.appointmentId || undefined,
       medicalRecordId: form.medicalRecordId || undefined,
+      petId: form.petId || undefined,
       items: items.map((item) => ({
         type: item.type,
         description: item.description,
@@ -268,6 +272,7 @@ export default function BillingPage() {
                     customerId,
                     appointmentId: appointment?.customer.id !== customerId ? '' : current.appointmentId,
                     medicalRecordId: medicalRecord?.customer.id !== customerId ? '' : current.medicalRecordId,
+                    petId: appointment?.customer.id !== customerId ? '' : current.petId,
                   }));
                 }}
                 className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2"
@@ -291,6 +296,7 @@ export default function BillingPage() {
                     appointmentId,
                     medicalRecordId: appointmentId ? '' : current.medicalRecordId,
                     customerId: appointment?.customer.id ?? current.customerId,
+                    petId: appointment?.pet.id ?? (appointmentId ? '' : current.petId),
                   }));
                 }}
                 className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2"
@@ -316,6 +322,7 @@ export default function BillingPage() {
                     medicalRecordId,
                     appointmentId: medicalRecordId ? '' : current.appointmentId,
                     customerId: medicalRecord?.customer.id ?? current.customerId,
+                    petId: medicalRecordId ? current.petId : current.petId,
                   }));
                 }}
                 className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2"

@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 type RecordRow = {
   id: string;
   recordNumber: string | null;
+  appointmentId: string;
   diagnosis: string | null;
   treatment: string | null;
   prescription: string | null;
@@ -18,7 +19,11 @@ type RecordRow = {
   chiefComplaint: string | null;
   history: string | null;
   physicalExam: string | null;
-  vitals: string | null;
+  vitalSigns: string | null;
+  weight: number | null;
+  temperature: number | null;
+  heartRate: number | null;
+  respiratoryRate: number | null;
   notes: string | null;
   attachments: string | null;
   searchText: string;
@@ -116,16 +121,16 @@ export default function MedicalRecordsPage() {
     setEditingId(record.id);
     setSelectedRecordId(record.id);
     setForm({
-      appointmentId: '',
+      appointmentId: record.appointmentId,
       date: record.date ? new Date(record.date).toISOString().slice(0, 16) : '',
       chiefComplaint: record.chiefComplaint ?? '',
       history: record.history ?? '',
       physicalExam: record.physicalExam ?? '',
-      vitalSigns: record.vitals ?? '',
-      weight: '',
-      temperature: '',
-      heartRate: '',
-      respiratoryRate: '',
+      vitalSigns: record.vitalSigns ?? '',
+      weight: record.weight != null ? String(record.weight) : '',
+      temperature: record.temperature != null ? String(record.temperature) : '',
+      heartRate: record.heartRate != null ? String(record.heartRate) : '',
+      respiratoryRate: record.respiratoryRate != null ? String(record.respiratoryRate) : '',
       diagnosis: record.diagnosis ?? '',
       treatment: record.treatment ?? '',
       prescription: record.prescription ?? '',
@@ -349,6 +354,9 @@ export default function MedicalRecordsPage() {
               <button type="button" onClick={() => window.print()} className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700">
                 <span className="flex items-center gap-2"><Printer className="h-4 w-4" /> Print</span>
               </button>
+              <Link href={`/billing?medicalRecordId=${selectedRecord.id}&customerId=${selectedRecord.customer?.id ?? ''}&petId=${selectedRecord.pet?.id ?? ''}`} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                Invoice
+              </Link>
               {canManage ? <button type="button" onClick={() => handleEdit(selectedRecord)} className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700">Edit</button> : null}
               {canManage ? <button type="button" onClick={() => void handleDelete(selectedRecord.id)} className="rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600"><span className="flex items-center gap-2"><Trash2 className="h-4 w-4" /> Hapus</span></button> : null}
             </div>

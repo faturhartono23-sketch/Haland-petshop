@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import Link from 'next/link';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarPlus, CheckCircle2, CircleSlash, PencilLine } from 'lucide-react';
 import { cancelAppointment, createAppointment, listAppointmentLookups, listAppointments, updateAppointment } from '@/actions/appointment';
@@ -157,6 +159,16 @@ export default function AppointmentsPage() {
     { key: 'doctor', header: 'Dokter', render: (row) => row.doctor?.name ?? '-' },
     { key: 'queueNumber', header: 'No. Antrian', render: (row) => row.queueNumber ?? '-' },
     { key: 'status', header: 'Status', render: (row) => row.status },
+    { key: 'id', header: 'Aksi', render: (row) => (
+      <div className="flex flex-wrap gap-2">
+        <Link href={`/billing?appointmentId=${row.id}&customerId=${row.customer.id}&petId=${row.pet.id}`}>
+          <button type="button" className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700">Invoice</button>
+        </Link>
+        <button type="button" onClick={() => handleStatus(row.id, 'IN_PROGRESS')} className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-700">In Progress</button>
+        <button type="button" onClick={() => handleStatus(row.id, 'DONE')} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">Selesai</button>
+        <button type="button" onClick={() => handleCancel(row.id)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs text-rose-700">Batal</button>
+      </div>
+    ) },
   ];
 
   return (
