@@ -206,11 +206,47 @@ export default function PetHotelPage() {
     }
   }
 
+  function handleEditRoom(room: RoomRow) {
+    setEditingId(room.id);
+    setRoomForm({
+      name: room.name,
+      roomNumber: room.roomNumber ?? '',
+      roomType: room.roomType ?? 'STANDARD',
+      capacity: String(room.capacity ?? 1),
+      status: room.status as any,
+      cleaningStatus: room.cleaningStatus ?? 'CLEAN',
+      maintenanceStatus: room.maintenanceStatus ?? 'OPERATIONAL',
+    });
+  }
+
+  async function handleDeleteRoom(roomId: string) {
+    if (!window.confirm('Hapus kamar ini?')) return;
+    const result = await deletePetHotelRoom(roomId);
+    if (result.success) {
+      setMessage('Kamar dihapus.');
+      await loadData();
+    } else {
+      setMessage(result.message ?? 'Gagal menghapus kamar.');
+    }
+  }
+
   const roomColumns: Array<{ key: keyof RoomRow; header: string; render?: (row: RoomRow) => ReactNode }> = [
     { key: 'name', header: 'Nama Kamar', render: (row) => <div><div className="font-medium text-zinc-900">{row.name}</div><div className="text-xs text-zinc-500">{row.roomNumber ? `No. ${row.roomNumber}` : 'Tanpa nomor'} • {row.roomType ?? 'STANDARD'}</div></div> },
     { key: 'status', header: 'Status', render: (row) => <span className={`rounded-full px-2 py-1 text-xs font-medium ${row.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-700' : row.status === 'OCCUPIED' ? 'bg-amber-100 text-amber-700' : row.status === 'RESERVED' ? 'bg-blue-100 text-blue-700' : 'bg-zinc-100 text-zinc-700'}`}>{row.status}</span> },
     { key: 'occupancy', header: 'Penghuni', render: (row) => `${row.occupancy}/${row.capacity ?? 1}` },
+    { key: 'id', header: 'Aksi', render: (row) => <div className="flex flex-wrap gap-2"><button type="button" onClick={() => handleEditRoom(row)} className="rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-700">Edit</button><button type="button" onClick={() => void handleDeleteRoom(row.id)} className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-600">Hapus</button></div> },
   ];
+
+  async function handleDeleteBooking(bookingId: string) {
+    if (!window.confirm('Hapus reservasi ini?')) return;
+    const result = await cancelPetHotelBooking(bookingId);
+    if (result.success) {
+      setMessage('Reservasi dihapus.');
+      await loadData();
+    } else {
+      setMessage(result.message ?? 'Gagal menghapus reservasi.');
+    }
+  }
 
   const filteredBookings = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -224,7 +260,7 @@ export default function PetHotelPage() {
     { key: 'pet', header: 'Hewan', render: (row) => <div><div className="font-medium text-zinc-900">{row.pet?.name ?? '-'}</div><div className="text-xs text-zinc-500">{row.pet?.customer?.name ?? '-'}</div></div> },
     { key: 'status', header: 'Status', render: (row) => <span className={`rounded-full px-2 py-1 text-xs font-medium ${row.status === 'BOOKED' ? 'bg-blue-100 text-blue-700' : row.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' : row.status === 'CHECKED_OUT' ? 'bg-zinc-100 text-zinc-700' : 'bg-red-100 text-red-700'}`}>{row.status}</span> },
     { key: 'room', header: 'Kamar', render: (row) => row.room?.name ?? '-' },
-    { key: 'id', header: 'Aksi', render: (row) => <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void handleCheckIn(row.id)} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">Check-in</button><button type="button" onClick={() => void handleCheckOut(row.id)} className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-700">Check-out</button><button type="button" onClick={() => { setSelectedBookingId(row.id); void loadLogs(row.id); }} className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-700"><NotebookPen className="mr-1 inline h-3 w-3" />Catatan</button>{row.status === 'BOOKED' ? <button type="button" onClick={() => void handleCancel(row.id)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700">Batal</button> : null}</div> },
+    { key: 'id', header: 'Aksi', render: (row) => <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void handleCheckIn(row.id)} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">Check-in</button><button type="button" onClick={() => void handleCheckOut(row.id)} className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-700">Check-out</button><button type="button" onClick={() => { setSelectedBookingId(row.id); void loadLogs(row.id); }} className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-700"><NotebookPen className="mr-1 inline h-3 w-3" />Catatan</button>{row.status === 'BOOKED' ? <button type="button" onClick={() => void handleCancel(row.id)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700">Batal</button> : null}{row.status !== 'CHECKED_OUT' ? <button type="button" onClick={() => void handleDeleteBooking(row.id)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs text-rose-600">Hapus</button> : null}</div> },
   ];
 
   return (
@@ -311,9 +347,14 @@ export default function PetHotelPage() {
                 {editingId ? 'Simpan perubahan' : 'Tambah kamar'}
               </button>
               {editingId ? (
-                <button type="button" onClick={() => { setEditingId(null); setRoomForm({ name: '', roomNumber: '', roomType: 'STANDARD', capacity: '1', status: 'AVAILABLE', cleaningStatus: 'CLEAN', maintenanceStatus: 'OPERATIONAL' }); }} className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700">
-                  Batal
-                </button>
+                <>
+                  <button type="button" onClick={() => { setEditingId(null); setRoomForm({ name: '', roomNumber: '', roomType: 'STANDARD', capacity: '1', status: 'AVAILABLE', cleaningStatus: 'CLEAN', maintenanceStatus: 'OPERATIONAL' }); }} className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700">
+                    Batal
+                  </button>
+                  <button type="button" onClick={() => { if (window.confirm('Hapus kamar ini?')) void handleDeleteRoom(editingId); }} className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-600">
+                    Hapus
+                  </button>
+                </>
               ) : null}
             </div>
           </form>
