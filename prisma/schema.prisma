@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "binary"
 }
 
@@ -81,27 +81,27 @@ enum PaymentMethod {
 }
 
 model User {
-  id               String   @id @default(cuid())
-  username         String   @unique
-  pinHash          String
-  name             String
-  phone            String?
-  role             UserRole
-  isActive         Boolean  @default(true)
-  isLocked         Boolean  @default(false)
-  mustChangePin    Boolean  @default(true)
-  failedPinAttempts Int     @default(0)
-  lockedUntil      DateTime?
-  createdById      String?
-  createdAt        DateTime @default(now())
+  id                String    @id @default(cuid())
+  username          String    @unique
+  pinHash           String
+  name              String
+  phone             String?
+  role              UserRole
+  isActive          Boolean   @default(true)
+  isLocked          Boolean   @default(false)
+  mustChangePin     Boolean   @default(true)
+  failedPinAttempts Int       @default(0)
+  lockedUntil       DateTime?
+  createdById       String?
+  createdAt         DateTime  @default(now())
 
-  createdBy              User?            @relation("UserCreatedBy", fields: [createdById], references: [id])
-  createdUsers           User[]           @relation("UserCreatedBy")
+  createdBy              User?           @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdUsers           User[]          @relation("UserCreatedBy")
   customer               Customer?
   notifications          Notification[]
   auditLogs              AuditLog[]
-  appointmentsAsDoctor   Appointment[]    @relation("DoctorAppointments")
-  medicalRecordsAsDoctor MedicalRecord[]  @relation("DoctorMedicalRecords")
+  appointmentsAsDoctor   Appointment[]   @relation("DoctorAppointments")
+  medicalRecordsAsDoctor MedicalRecord[] @relation("DoctorMedicalRecords")
 }
 
 model Customer {
@@ -115,31 +115,31 @@ model Customer {
   photo            String?
   notes            String?
 
-  user            User?            @relation(fields: [userId], references: [id])
-  pets            Pet[]
-  appointments    Appointment[]
-  medicalRecords  MedicalRecord[]
-  invoices        Invoice[]
+  user           User?           @relation(fields: [userId], references: [id])
+  pets           Pet[]
+  appointments   Appointment[]
+  medicalRecords MedicalRecord[]
+  invoices       Invoice[]
 }
 
 model Pet {
-  id          String    @id @default(cuid())
-  customerId  String
-  name        String
-  species     String
-  breed       String?
-  birthDate   DateTime?
-  gender      String?
-  photo       String?
+  id         String    @id @default(cuid())
+  customerId String
+  name       String
+  species    String
+  breed      String?
+  birthDate  DateTime?
+  gender     String?
+  photo      String?
 
-  customer         Customer            @relation(fields: [customerId], references: [id])
-  weightLogs       PetWeightLog[]
-  vaccineRecords   PetVaccineRecord[]
-  diseaseRecords   PetDiseaseRecord[]
-  allergies        PetAllergy[]
-  appointments     Appointment[]
-  medicalRecords   MedicalRecord[]
-  hotelBookings    PetHotelBooking[]
+  customer       Customer           @relation(fields: [customerId], references: [id])
+  weightLogs     PetWeightLog[]
+  vaccineRecords PetVaccineRecord[]
+  diseaseRecords PetDiseaseRecord[]
+  allergies      PetAllergy[]
+  appointments   Appointment[]
+  medicalRecords MedicalRecord[]
+  hotelBookings  PetHotelBooking[]
 }
 
 model PetWeightLog {
@@ -152,76 +152,76 @@ model PetWeightLog {
 }
 
 model PetVaccineRecord {
-  id            String    @id @default(cuid())
-  petId         String
-  vaccineName   String
-  date          DateTime  @default(now())
-  nextDueDate   DateTime?
+  id          String    @id @default(cuid())
+  petId       String
+  vaccineName String
+  date        DateTime  @default(now())
+  nextDueDate DateTime?
 
   pet Pet @relation(fields: [petId], references: [id])
 }
 
 model PetDiseaseRecord {
-  id           String    @id @default(cuid())
-  petId        String
-  diseaseName  String
-  note         String?
-  date         DateTime  @default(now())
+  id          String   @id @default(cuid())
+  petId       String
+  diseaseName String
+  note        String?
+  date        DateTime @default(now())
 
   pet Pet @relation(fields: [petId], references: [id])
 }
 
 model PetAllergy {
-  id        String  @id @default(cuid())
-  petId     String
-  allergen  String
-  note      String?
+  id       String  @id @default(cuid())
+  petId    String
+  allergen String
+  note     String?
 
   pet Pet @relation(fields: [petId], references: [id])
 }
 
 model Appointment {
-  id                  String              @id @default(cuid())
+  id                  String            @id @default(cuid())
   petId               String
   customerId          String
   doctorId            String?
   date                DateTime
   queueNumber         Int?
-  status              AppointmentStatus   @default(WAITING)
-  requestedByCustomer Boolean             @default(false)
+  status              AppointmentStatus @default(WAITING)
+  requestedByCustomer Boolean           @default(false)
 
-  pet            Pet            @relation(fields: [petId], references: [id])
-  customer       Customer       @relation(fields: [customerId], references: [id])
-  doctor         User?          @relation("DoctorAppointments", fields: [doctorId], references: [id])
-  medicalRecord  MedicalRecord?
+  pet           Pet            @relation(fields: [petId], references: [id])
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  doctor        User?          @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  medicalRecord MedicalRecord?
 }
 
 model MedicalRecord {
-  id                String   @id @default(cuid())
-  recordNumber      String   @unique
-  appointmentId     String   @unique
-  customerId        String
-  petId             String
-  doctorId          String
-  date              DateTime @default(now())
-  chiefComplaint    String?
-  history           String?
-  physicalExam      String?
-  vitalSigns        String?
-  weight            Float?
-  temperature       Float?
-  heartRate         Int?
-  respiratoryRate   Int?
-  diagnosis         String?
-  treatment         String?
-  prescription      String?
-  labResult         String?
-  notes             String?
-  attachments       String?
-  status            String   @default("OPEN")
-  version           Int      @default(1)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id              String   @id @default(cuid())
+  recordNumber    String   @unique
+  appointmentId   String   @unique
+  customerId      String
+  petId           String
+  doctorId        String
+  date            DateTime @default(now())
+  chiefComplaint  String?
+  history         String?
+  physicalExam    String?
+  vitalSigns      String?
+  weight          Float?
+  temperature     Float?
+  heartRate       Int?
+  respiratoryRate Int?
+  diagnosis       String?
+  treatment       String?
+  prescription    String?
+  labResult       String?
+  notes           String?
+  attachments     String?
+  status          String   @default("OPEN")
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   appointment Appointment @relation(fields: [appointmentId], references: [id])
   customer    Customer    @relation(fields: [customerId], references: [id])
@@ -234,33 +234,33 @@ model MedicalRecord {
 }
 
 model PetHotelBooking {
-  id                  String                  @id @default(cuid())
-  bookingNumber       String?                 @unique
+  id                  String                @id @default(cuid())
+  bookingNumber       String?               @unique
   petId               String
   roomId              String?
   checkInDate         DateTime
   checkOutDate        DateTime
-  status              PetHotelBookingStatus  @default(BOOKED)
-  requestedByCustomer Boolean                 @default(false)
+  status              PetHotelBookingStatus @default(BOOKED)
+  requestedByCustomer Boolean               @default(false)
   notes               String?
 
-  pet    Pet              @relation(fields: [petId], references: [id])
-  room   PetHotelRoom?    @relation(fields: [roomId], references: [id])
-  logs   PetHotelLog[]
+  pet  Pet           @relation(fields: [petId], references: [id])
+  room PetHotelRoom? @relation(fields: [roomId], references: [id])
+  logs PetHotelLog[]
 
   @@index([status, checkInDate, checkOutDate])
   @@index([roomId, checkInDate, checkOutDate])
 }
 
 model PetHotelRoom {
-  id                 String               @id @default(cuid())
-  name               String
-  roomNumber         String?
-  roomType           String               @default("STANDARD")
-  capacity           Int                  @default(1)
-  status             PetHotelRoomStatus  @default(AVAILABLE)
-  cleaningStatus     String               @default("CLEAN")
-  maintenanceStatus  String               @default("OPERATIONAL")
+  id                String             @id @default(cuid())
+  name              String
+  roomNumber        String?
+  roomType          String             @default("STANDARD")
+  capacity          Int                @default(1)
+  status            PetHotelRoomStatus @default(AVAILABLE)
+  cleaningStatus    String             @default("CLEAN")
+  maintenanceStatus String             @default("OPERATIONAL")
 
   bookings PetHotelBooking[]
 
@@ -268,37 +268,37 @@ model PetHotelRoom {
 }
 
 model PetHotelLog {
-  id          String            @id @default(cuid())
+  id          String          @id @default(cuid())
   bookingId   String
   type        PetHotelLogType
   description String
   photo       String?
-  date        DateTime          @default(now())
+  date        DateTime        @default(now())
 
   booking PetHotelBooking @relation(fields: [bookingId], references: [id])
 }
 
 model Product {
-  id           String        @id @default(cuid())
-  name         String
-  sku          String?
-  barcode      String?
-  brand        String?
-  description  String?
-  categoryId   String?
-  supplierId   String?
-  unit         String?
-  buyPrice     Float         @default(0)
-  sellPrice    Float         @default(0)
-  costPrice    Float         @default(0)
-  stock        Int           @default(0)
-  minStock     Int           @default(0)
-  maxStock     Int?
-  status       ProductStatus @default(ACTIVE)
-  imageUrl     String?
-  isArchived   Boolean       @default(false)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id          String        @id @default(cuid())
+  name        String
+  sku         String?
+  barcode     String?
+  brand       String?
+  description String?
+  categoryId  String?
+  supplierId  String?
+  unit        String?
+  buyPrice    Float         @default(0)
+  sellPrice   Float         @default(0)
+  costPrice   Float         @default(0)
+  stock       Int           @default(0)
+  minStock    Int           @default(0)
+  maxStock    Int?
+  status      ProductStatus @default(ACTIVE)
+  imageUrl    String?
+  isArchived  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   category       ProductCategory? @relation(fields: [categoryId], references: [id])
   supplier       Supplier?        @relation(fields: [supplierId], references: [id])
@@ -307,12 +307,12 @@ model Product {
 }
 
 model Procedure {
-  id          String        @id @default(cuid())
-  code        String?       @unique
+  id          String   @id @default(cuid())
+  code        String?  @unique
   name        String
   description String?
-  price       Float         @default(0)
-  createdAt   DateTime      @default(now())
+  price       Float    @default(0)
+  createdAt   DateTime @default(now())
 
   invoiceItems InvoiceItem[]
 }
@@ -344,22 +344,22 @@ model StockMovement {
 }
 
 model Invoice {
-  id                String        @id @default(cuid())
-  customerId        String
-  appointmentId     String?
-  medicalRecordId   String?
-  petId             String?
-  doctorId          String?
-  createdById       String?
-  invoiceNumber     String        @unique
-  status            InvoiceStatus @default(UNPAID)
-  subtotal          Float         @default(0)
-  discountAmount    Float         @default(0)
-  taxRate           Float         @default(0)
-  taxAmount         Float         @default(0)
-  totalAmount       Float         @default(0)
-  notes             String?
-  date              DateTime      @default(now())
+  id              String        @id @default(cuid())
+  customerId      String
+  appointmentId   String?
+  medicalRecordId String?
+  petId           String?
+  doctorId        String?
+  createdById     String?
+  invoiceNumber   String        @unique
+  status          InvoiceStatus @default(UNPAID)
+  subtotal        Float         @default(0)
+  discountAmount  Float         @default(0)
+  taxRate         Float         @default(0)
+  taxAmount       Float         @default(0)
+  totalAmount     Float         @default(0)
+  notes           String?
+  date            DateTime      @default(now())
 
   customer Customer      @relation(fields: [customerId], references: [id])
   items    InvoiceItem[]
@@ -377,17 +377,17 @@ model InvoiceItem {
   price       Float           @default(0)
   subtotal    Float           @default(0)
 
-  invoice   Invoice   @relation(fields: [invoiceId], references: [id])
-  product   Product?  @relation(fields: [productId], references: [id])
+  invoice   Invoice    @relation(fields: [invoiceId], references: [id])
+  product   Product?   @relation(fields: [productId], references: [id])
   procedure Procedure? @relation(fields: [procedureId], references: [id])
 }
 
 model Payment {
-  id        String         @id @default(cuid())
+  id        String        @id @default(cuid())
   invoiceId String
   method    PaymentMethod
   amount    Float
-  date      DateTime       @default(now())
+  date      DateTime      @default(now())
 
   invoice Invoice @relation(fields: [invoiceId], references: [id])
 }
@@ -417,40 +417,40 @@ model AuditLog {
 }
 
 model Settings {
-  id                    String  @id @default(cuid())
-  clinicName            String?
-  logo                  String?
-  address               String?
-  phone                 String?
-  email                 String?
-  website               String?
-  taxNumber             String?
-  operationalHours      String?
-  timezone              String?
-  currency              String?
-  language              String?
-  footerInfo            String?
-  receiptHeader         String?
-  receiptFooter         String?
-  appName               String?
-  appVersion            String?
-  dateFormat            String?
-  timeFormat            String?
-  numberFormat          String?
-  pagination            Int?
-  sessionTimeout        Int?
-  autoLogout            Boolean? @default(false)
-  defaultDashboard      String?
-  appointmentDuration   Int?
-  workingDays           String?
-  holidayRules          String?
-  invoicePrefix         String?
-  medicalRecordPrefix   String?
-  customerPrefix        String?
-  petPrefix             String?
-  posPrefix             String?
-  bookingPrefix         String?
-  receiptPrefix         String?
-  autoNumbering         Boolean? @default(true)
-  theme                 String?
+  id                  String   @id @default(cuid())
+  clinicName          String?
+  logo                String?
+  address             String?
+  phone               String?
+  email               String?
+  website             String?
+  taxNumber           String?
+  operationalHours    String?
+  timezone            String?
+  currency            String?
+  language            String?
+  footerInfo          String?
+  receiptHeader       String?
+  receiptFooter       String?
+  appName             String?
+  appVersion          String?
+  dateFormat          String?
+  timeFormat          String?
+  numberFormat        String?
+  pagination          Int?
+  sessionTimeout      Int?
+  autoLogout          Boolean? @default(false)
+  defaultDashboard    String?
+  appointmentDuration Int?
+  workingDays         String?
+  holidayRules        String?
+  invoicePrefix       String?
+  medicalRecordPrefix String?
+  customerPrefix      String?
+  petPrefix           String?
+  posPrefix           String?
+  bookingPrefix       String?
+  receiptPrefix       String?
+  autoNumbering       Boolean? @default(true)
+  theme               String?
 }

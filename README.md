@@ -25,7 +25,7 @@ Buka: http://localhost:3000
 
 ### 2. Login
 - **Username**: owner
-- **PIN**: 1234
+- **PIN**: 123456
 
 ### 3. Explore App
 - Dashboard, Customers, Pets, Appointments, Pet Hotel, Inventory, Billing
@@ -148,9 +148,9 @@ npm run setup            # Run full setup script
 
 | Role | Username | PIN | Access |
 |------|----------|-----|--------|
-| Owner | `owner` | `1234` | Full system access |
-| Admin | `admin` | `1234` | Administrative functions |
-| Doctor | `dr_budi` | `1234` | Medical & appointment features |
+| Owner | `owner` | `123456` | Full system access |
+| Admin | `admin` | `123456` | Administrative functions |
+| Doctor | `dr_budi` | `123456` | Medical & appointment features |
 
 ---
 

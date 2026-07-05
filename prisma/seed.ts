@@ -6,8 +6,10 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
+  const defaultPin = '123456';
+
   // Create default owner user
-  const ownerPinHash = await bcrypt.hash('1234', 10);
+  const ownerPinHash = await bcrypt.hash(defaultPin, 10);
   
   const owner = await prisma.user.upsert({
     where: { username: 'owner' },
@@ -25,7 +27,7 @@ async function main() {
   console.log('✅ Owner user created:', owner.username);
 
   // Create admin user
-  const adminPinHash = await bcrypt.hash('1234', 10);
+  const adminPinHash = await bcrypt.hash(defaultPin, 10);
   
   const admin = await prisma.user.upsert({
     where: { username: 'admin' },
@@ -44,7 +46,7 @@ async function main() {
   console.log('✅ Admin user created:', admin.username);
 
   // Create sample doctor
-  const doctorPinHash = await bcrypt.hash('1234', 10);
+  const doctorPinHash = await bcrypt.hash(defaultPin, 10);
   
   const doctor = await prisma.user.upsert({
     where: { username: 'dr_budi' },
@@ -63,7 +65,7 @@ async function main() {
   console.log('✅ Doctor user created:', doctor.username);
 
   // Create a sample customer user for portal access
-  const customerUserPinHash = await bcrypt.hash('1234', 10);
+  const customerUserPinHash = await bcrypt.hash(defaultPin, 10);
   const customerUser = await prisma.user.upsert({
     where: { username: 'customer' },
     update: {},
@@ -241,10 +243,10 @@ async function main() {
   console.log('✨ Seeding completed successfully!');
   console.log('');
   console.log('📝 Default User Credentials:');
-  console.log('   Owner    - Username: owner     | PIN: 1234');
-  console.log('   Admin    - Username: admin     | PIN: 1234');
-  console.log('   Doctor   - Username: dr_budi   | PIN: 1234');
-  console.log('   Customer - Username: customer  | PIN: 1234');
+  console.log(`   Owner    - Username: owner     | PIN: ${defaultPin}`);
+  console.log(`   Admin    - Username: admin     | PIN: ${defaultPin}`);
+  console.log(`   Doctor   - Username: dr_budi   | PIN: ${defaultPin}`);
+  console.log(`   Customer - Username: customer  | PIN: ${defaultPin}`);
   console.log('');
   console.log('⚠️  GANTI PIN SETELAH PERTAMA KALI LOGIN');
 }

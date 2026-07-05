@@ -1,4 +1,4 @@
-function buildInvoicePrefillFromSearchParams(searchParams) {
+export function buildInvoicePrefillFromSearchParams(searchParams: URLSearchParams) {
   return {
     customerId: searchParams.get('customerId') ?? '',
     appointmentId: searchParams.get('appointmentId') ?? '',
@@ -7,13 +7,8 @@ function buildInvoicePrefillFromSearchParams(searchParams) {
   };
 }
 
-function buildMedicalRecordPrefillFromSearchParams(searchParams) {
+export function buildMedicalRecordPrefillFromSearchParams(searchParams: URLSearchParams) {
   return {
     appointmentId: searchParams.get('appointmentId') ?? '',
   };
 }
-
-module.exports = {
-  buildInvoicePrefillFromSearchParams,
-  buildMedicalRecordPrefillFromSearchParams,
-};

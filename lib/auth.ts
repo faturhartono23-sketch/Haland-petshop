@@ -29,7 +29,7 @@ declare module 'next-auth/jwt' {
 
 const loginSchema = z.object({
   username: z.string().trim().min(1),
-  pin: z.string().trim().min(1),
+  pin: z.string().trim().regex(/^\d{6}$/, 'PIN harus 6 digit.'),
 });
 
 const nextAuthSecret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
