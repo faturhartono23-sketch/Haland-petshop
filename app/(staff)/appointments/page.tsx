@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Link from 'next/link';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarPlus, CheckCircle2, CircleSlash, PencilLine } from 'lucide-react';
 import { cancelAppointment, createAppointment, listAppointmentLookups, listAppointments, updateAppointment } from '@/actions/appointment';

@@ -169,7 +169,7 @@ export default function BillingPage() {
     setMessage('Invoice berhasil dibuat.');
     setItems([]);
     setItemForm({ type: 'KONSULTASI', description: '', qty: '1', price: '0', productId: '', procedureId: '' });
-    setForm({ customerId: '', appointmentId: '', medicalRecordId: '', discountAmount: '0', taxRate: '0', notes: '', initialPaymentAmount: '0', initialPaymentMethod: 'CASH' });
+    setForm({ customerId: '', appointmentId: '', medicalRecordId: '', petId: '', discountAmount: '0', taxRate: '0', notes: '', initialPaymentAmount: '0', initialPaymentMethod: 'CASH' });
     await loadData();
     setSubmitting(false);
   }

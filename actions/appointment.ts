@@ -415,6 +415,13 @@ export async function cancelAppointment(input: z.infer<typeof cancelAppointmentS
 }
 
 export async function getAppointmentSummary() {
+  const session = await auth();
+  const actorId = getActorId(session);
+
+  if (!actorId) {
+    return { success: false, message: 'Tidak terautentikasi.' };
+  }
+
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);

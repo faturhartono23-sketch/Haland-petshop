@@ -58,6 +58,8 @@ export async function updateProfile(input: z.infer<typeof profileSchema>) {
     return { success: false, message: 'Tidak terautentikasi.', data: null };
   }
 
+  const actorRole = session.user.role as string | undefined;
+
   const result = await prisma.$transaction(async (tx) => {
     const updatedUser = await tx.user.update({
       where: { id: session.user.id },
@@ -69,29 +71,32 @@ export async function updateProfile(input: z.infer<typeof profileSchema>) {
 
     const existingCustomer = await tx.customer.findFirst({ where: { userId: session.user.id } });
 
-    const customer = existingCustomer
-      ? await tx.customer.update({
-          where: { id: existingCustomer.id },
-          data: {
-            name: parsed.data.name,
-            phone: parsed.data.phone || null,
-            email: parsed.data.email || null,
-            address: parsed.data.address || null,
-            emergencyContact: parsed.data.emergencyContact || null,
-            photo: parsed.data.photo || null,
-          },
-        })
-      : await tx.customer.create({
-          data: {
-            userId: session.user.id,
-            name: parsed.data.name,
-            phone: parsed.data.phone || null,
-            email: parsed.data.email || null,
-            address: parsed.data.address || null,
-            emergencyContact: parsed.data.emergencyContact || null,
-            photo: parsed.data.photo || null,
-          },
-        });
+    let customer = existingCustomer;
+    if (existingCustomer) {
+      customer = await tx.customer.update({
+        where: { id: existingCustomer.id },
+        data: {
+          name: parsed.data.name,
+          phone: parsed.data.phone || null,
+          email: parsed.data.email || null,
+          address: parsed.data.address || null,
+          emergencyContact: parsed.data.emergencyContact || null,
+          photo: parsed.data.photo || null,
+        },
+      });
+    } else if (actorRole === 'CUSTOMER') {
+      customer = await tx.customer.create({
+        data: {
+          userId: session.user.id,
+          name: parsed.data.name,
+          phone: parsed.data.phone || null,
+          email: parsed.data.email || null,
+          address: parsed.data.address || null,
+          emergencyContact: parsed.data.emergencyContact || null,
+          photo: parsed.data.photo || null,
+        },
+      });
+    }
 
     return { user: updatedUser, customer };
   });
@@ -114,6 +119,10 @@ export async function changePin(input: z.infer<typeof changePinSchema>) {
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user) {
     return { success: false, message: 'Pengguna tidak ditemukan.', data: null };
+  }
+
+  if (parsed.data.currentPin === parsed.data.newPin) {
+    return { success: false, message: 'PIN baru tidak boleh sama dengan PIN lama.', data: null };
   }
 
   const isValid = await bcrypt.compare(parsed.data.currentPin, user.pinHash);

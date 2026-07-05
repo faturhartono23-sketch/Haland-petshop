@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createUser } from '@/actions/auth';
+import { createUser } from '@/lib/user-management';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { canAccessModule, isStaffRole } from '@/lib/permissions';

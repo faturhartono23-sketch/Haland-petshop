@@ -1,9 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
+import { createUser as createUserInternal, resetPin as resetPinInternal, unlockUser as unlockUserInternal } from '@/lib/user-management';
 import { prisma } from '@/lib/db';
 import { canManageTargetRole, canPerformAction, type Role } from '@/lib/permissions';
 
@@ -36,10 +36,6 @@ const resetPinSchema = z.object({
 const unlockUserSchema = z.object({
   id: z.string().min(1),
 });
-
-function generatePin() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
 
 function getActorRole(session: Awaited<ReturnType<typeof auth>>) {
   return (session?.user as { role?: string } | undefined)?.role as Role | undefined;
@@ -84,71 +80,11 @@ export async function listUsers() {
 }
 
 export async function createUser(input: z.infer<typeof userInputSchema>) {
-  const session = await auth();
-  const actorRole = getActorRole(session);
-  const parsed = userInputSchema.safeParse(input);
-
-  if (!parsed.success) {
-    return { success: false, message: 'Data tidak valid.' };
-  }
-
-  if (!session?.user?.id) {
-    return { success: false, message: 'Tidak terautentikasi.' };
-  }
-
-  if (!actorRole || !canPerformAction(actorRole, 'users', 'create')) {
-    return { success: false, message: 'Anda tidak berwenang membuat akun.' };
-  }
-
-  const permission = canManageTargetRole(actorRole, parsed.data.role);
-  if (!permission.allowed) {
-    return { success: false, message: permission.message };
-  }
-
-  const normalizedUsername = normalizeUsername(parsed.data.username);
-  const existing = await prisma.user.findFirst({ where: { username: { equals: normalizedUsername, mode: 'insensitive' } } });
-  if (existing) {
-    return { success: false, message: 'Username sudah dipakai.' };
-  }
-
-  const temporaryPin = generatePin();
-  const pinHash = await bcrypt.hash(temporaryPin, 10);
-  const actorId = session.user.id;
-
-  try {
-    const user = await prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          username: normalizedUsername,
-          pinHash,
-          name: parsed.data.name,
-          phone: parsed.data.phone || null,
-          role: parsed.data.role,
-          isActive: parsed.data.isActive ?? true,
-          mustChangePin: true,
-          createdById: actorId,
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId: actorId,
-          action: 'CREATE',
-          entity: 'User',
-          entityId: created.id,
-          description: `Membuat akun ${created.username}`,
-        },
-      });
-
-      return created;
-    });
-
+  const result = await createUserInternal(input);
+  if (result.success) {
     revalidatePath('/users');
-    return { success: true, userId: user.id, temporaryPin };
-  } catch (error) {
-    console.error('Failed to create user', error);
-    return { success: false, message: 'Gagal membuat akun.' };
   }
+  return result;
 }
 
 export async function updateUser(input: z.infer<typeof updateUserSchema>) {
@@ -343,126 +279,17 @@ export async function activateUser(input: z.infer<typeof activateUserSchema>) {
 }
 
 export async function resetPin(input: z.infer<typeof resetPinSchema>) {
-  const session = await auth();
-  const actorRole = getActorRole(session);
-  const parsed = resetPinSchema.safeParse(input);
-
-  if (!parsed.success) {
-    return { success: false, message: 'Data tidak valid.' };
-  }
-
-  if (!session?.user?.id) {
-    return { success: false, message: 'Tidak terautentikasi.' };
-  }
-
-  if (!actorRole || !canPerformAction(actorRole, 'users', 'update')) {
-    return { success: false, message: 'Anda tidak berwenang mereset PIN.' };
-  }
-
-  const actorId = session.user.id;
-  const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.id } });
-  if (!targetUser) {
-    return { success: false, message: 'Akun tidak ditemukan.' };
-  }
-
-  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
-  if (!permission.allowed) {
-    return { success: false, message: permission.message };
-  }
-
-  const temporaryPin = generatePin();
-  const pinHash = await bcrypt.hash(temporaryPin, 10);
-
-  try {
-    const updated = await prisma.$transaction(async (tx) => {
-      const current = await tx.user.update({
-        where: { id: parsed.data.id },
-        data: {
-          pinHash,
-          mustChangePin: true,
-          failedPinAttempts: 0,
-          isLocked: false,
-          lockedUntil: null,
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId: actorId,
-          action: 'UPDATE',
-          entity: 'User',
-          entityId: current.id,
-          description: `Mereset PIN akun ${current.username}`,
-        },
-      });
-
-      return current;
-    });
-
+  const result = await resetPinInternal({ userId: input.id });
+  if (result.success) {
     revalidatePath('/users');
-    return { success: true, userId: updated.id, temporaryPin };
-  } catch (error) {
-    console.error('Failed to reset PIN', error);
-    return { success: false, message: 'Gagal mereset PIN.' };
   }
+  return result;
 }
 
 export async function unlockUser(input: z.infer<typeof unlockUserSchema>) {
-  const session = await auth();
-  const actorRole = getActorRole(session);
-  const parsed = unlockUserSchema.safeParse(input);
-
-  if (!parsed.success) {
-    return { success: false, message: 'Data tidak valid.' };
-  }
-
-  if (!session?.user?.id) {
-    return { success: false, message: 'Tidak terautentikasi.' };
-  }
-
-  if (!actorRole || !canPerformAction(actorRole, 'users', 'update')) {
-    return { success: false, message: 'Anda tidak berwenang membuka kunci akun.' };
-  }
-
-  const actorId = session.user.id;
-  const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.id } });
-  if (!targetUser) {
-    return { success: false, message: 'Akun tidak ditemukan.' };
-  }
-
-  const permission = canManageTargetRole(actorRole, targetUser.role as Role);
-  if (!permission.allowed) {
-    return { success: false, message: permission.message };
-  }
-
-  try {
-    const updated = await prisma.$transaction(async (tx) => {
-      const current = await tx.user.update({
-        where: { id: parsed.data.id },
-        data: {
-          isLocked: false,
-          lockedUntil: null,
-          failedPinAttempts: 0,
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId: actorId,
-          action: 'UPDATE',
-          entity: 'User',
-          entityId: current.id,
-          description: `Membuka kunci akun ${current.username}`,
-        },
-      });
-
-      return current;
-    });
-
+  const result = await unlockUserInternal({ userId: input.id });
+  if (result.success) {
     revalidatePath('/users');
-    return { success: true, userId: updated.id };
-  } catch (error) {
-    console.error('Failed to unlock user', error);
-    return { success: false, message: 'Gagal membuka kunci akun.' };
   }
+  return result;
 }

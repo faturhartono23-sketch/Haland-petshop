@@ -164,6 +164,11 @@ export async function deleteProductCategory(id: string) {
     return { success: false, message: 'Hanya Owner yang dapat menghapus kategori.' };
   }
 
+  const productCount = await prisma.product.count({ where: { categoryId: id } });
+  if (productCount > 0) {
+    return { success: false, message: `Tidak dapat menghapus kategori karena masih ada ${productCount} produk yang terhubung.` };
+  }
+
   await prisma.productCategory.delete({ where: { id } });
 
   revalidatePath('/petshop/products');
@@ -239,6 +244,11 @@ export async function deleteSupplier(id: string) {
 
   if (!actorId || actorRole !== 'OWNER') {
     return { success: false, message: 'Hanya Owner yang dapat menghapus supplier.' };
+  }
+
+  const productCount = await prisma.product.count({ where: { supplierId: id } });
+  if (productCount > 0) {
+    return { success: false, message: `Tidak dapat menghapus supplier karena masih ada ${productCount} produk yang terhubung.` };
   }
 
   await prisma.supplier.delete({ where: { id } });

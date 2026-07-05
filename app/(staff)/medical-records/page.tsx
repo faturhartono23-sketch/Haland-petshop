@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FileText, Printer, Trash2 } from 'lucide-react';
 import { createMedicalRecord, deleteMedicalRecord, getMedicalRecordAccess, listMedicalRecordOptions, listMedicalRecords, updateMedicalRecord } from '@/actions/medical-record';
@@ -27,9 +28,9 @@ type RecordRow = {
   notes: string | null;
   attachments: string | null;
   searchText: string;
-  customer: { name: string } | null;
-  pet: { name: string; species: string } | null;
-  doctor: { name: string } | null;
+  customer: { id: string; name: string } | null;
+  pet: { id: string; name: string; species: string } | null;
+  doctor: { id: string; name: string } | null;
 };
 
 type MedicalRecordFormState = {
