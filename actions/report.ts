@@ -3,7 +3,8 @@
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { isStaffRole } from '@/lib/permissions';
+import { isDoctor } from '@/lib/permissions';
+
 import { getActorRole, getActorId } from '@/lib/utils';
 const REPORT_TYPES = [
   'revenue',
@@ -38,10 +39,6 @@ const reportFilterSchema = z.object({
 type ReportType = (typeof REPORT_TYPES)[number];
 
 type ReportFilters = z.infer<typeof reportFilterSchema>;
-
-function isDoctor(role?: string) {
-  return role === 'DOKTER';
-}
 
 const STAFF_ROLES = ['OWNER', 'ADMIN_KLINIK', 'DOKTER'];
 
@@ -128,10 +125,6 @@ function applySearch(rows: Array<Record<string, unknown>>, query: string) {
   }
   const normalized = query.toLowerCase();
   return rows.filter((row) => Object.values(row).some((value) => searchMatches(value, normalized)));
-}
-
-function getCurrency(value: number | null | undefined) {
-  return Number(value ?? 0).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 }
 
 async function getFilterOptions(actorRole?: string) {
