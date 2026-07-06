@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getPet } from '@/actions/pet';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type PetDetail = {
   id: string;
@@ -46,23 +47,26 @@ export default function PetDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError('');
-      const result = await getPet(params.id);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    const result = await getPet(params.id);
 
-      if (result.success) {
-        setPet(result.pet as PetDetail);
-      } else {
-        setPet(null);
-        setError(result.message ?? 'Gagal memuat detail hewan.');
-      }
-
-      setLoading(false);
+    if (result.success) {
+      setPet(result.pet as PetDetail);
+    } else {
+      setPet(null);
+      setError(result.message ?? 'Gagal memuat detail hewan.');
     }
-    void load();
+
+    setLoading(false);
   }, [params.id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useRefetchOnFocus(load);
 
   if (loading) return <div className="rounded-xl border border-zinc-200 bg-white p-8 text-sm text-zinc-500">Memuat detail hewan...</div>;
 

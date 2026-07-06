@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CalendarPlus } from 'lucide-react';
 import { cancelAppointment, createAppointment, listAppointmentLookups, listAppointments } from '@/actions/appointment';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 export default function CustomerAppointmentsPage() {
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -14,11 +15,7 @@ export default function CustomerAppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const [appointmentResult, lookupResult] = await Promise.all([listAppointments(), listAppointmentLookups()]);
     if (appointmentResult.success) setAppointments(appointmentResult.appointments as any[]);
@@ -27,7 +24,13 @@ export default function CustomerAppointmentsPage() {
       setDoctors(lookupResult.doctors as any[]);
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();

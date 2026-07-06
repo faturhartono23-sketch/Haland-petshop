@@ -61,7 +61,7 @@ export default function PetshopProductsPage() {
 
   async function loadData() {
     setLoading(true);
-    const [productsResult, categoriesResult, suppliersResult] = await Promise.all([listProducts(), listProductCategories(), listSuppliers()]);
+    const [productsResult, categoriesResult, suppliersResult] = await Promise.all([listProducts(false), listProductCategories(), listSuppliers()]);
 
     if (productsResult.success) setProducts(productsResult.products as any[]);
     if (categoriesResult.success) setCategories(categoriesResult.categories as any[]);

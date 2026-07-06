@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Plus, Eye, Trash2, Pencil } from 'lucide-react';
 import { createCustomer, deleteCustomer, listCustomers, updateCustomer } from '@/actions/customer';
@@ -8,6 +8,7 @@ import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { FormDialog } from '@/components/shared/form-dialog';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type CustomerRow = {
   id: string;
@@ -43,11 +44,7 @@ export default function CustomersPage() {
   const [form, setForm] = useState<CustomerForm>(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    void loadCustomers();
-  }, []);
-
-  async function loadCustomers() {
+  const loadCustomers = useCallback(async () => {
     setLoading(true);
     setMessage('');
     setIsErrorMessage(false);
@@ -62,7 +59,13 @@ export default function CustomersPage() {
     }
 
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadCustomers();
+  }, [loadCustomers]);
+
+  useRefetchOnFocus(loadCustomers);
 
   function openCreate() {
     setEditingId(null);

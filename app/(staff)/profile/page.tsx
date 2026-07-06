@@ -1,26 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Lock, User } from 'lucide-react';
 import { changePin, getProfileData, updateProfile } from '@/actions/profile';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 export default function ProfilePage() {
   const [message, setMessage] = useState('');
   const [form, setForm] = useState({ name: '', phone: '' });
   const [pinForm, setPinForm] = useState({ currentPin: '', newPin: '' });
 
-  useEffect(() => {
-    void loadProfile();
-  }, []);
-
-  async function loadProfile() {
+  const loadProfile = useCallback(async () => {
     const result = await getProfileData();
     if (result.success && result.data) {
       setForm({ name: result.data.user.name, phone: result.data.user.phone ?? '' });
     } else {
       setMessage(result.message ?? 'Gagal memuat profil.');
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  useRefetchOnFocus(loadProfile);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();

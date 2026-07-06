@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CalendarPlus } from 'lucide-react';
 import { cancelPetHotelBooking, createPetHotelBooking, listPetHotelBookings, listPetHotelPets } from '@/actions/pet-hotel';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 export default function CustomerPetHotelPage() {
   const [bookings, setBookings] = useState<any[]>([]);
@@ -11,11 +12,7 @@ export default function CustomerPetHotelPage() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const [bookingsResult, petsResult] = await Promise.all([listPetHotelBookings(), listPetHotelPets()]);
     if (bookingsResult.success) {
       setBookings(bookingsResult.bookings as any[]);
@@ -24,7 +21,13 @@ export default function CustomerPetHotelPage() {
       setPets((petsResult.pets as any[]) ?? []);
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();

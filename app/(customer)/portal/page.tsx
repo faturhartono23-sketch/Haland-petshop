@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, ReceiptText, ScrollText, PawPrint, BellRing } from 'lucide-react';
 import { getPortalAppointmentSummary, listAppointments } from '@/actions/appointment';
 import { getPortalInvoiceSummary, getPortalInvoices } from '@/actions/invoice';
 import { getNotifications } from '@/actions/notification';
 import { listPets } from '@/actions/pet';
 import { listMedicalRecords } from '@/actions/medical-record';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 export default function PortalPage() {
   const [upcomingAppointments, setUpcomingAppointments] = useState<number | null>(null);
@@ -19,11 +20,7 @@ export default function PortalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
 
@@ -66,7 +63,13 @@ export default function PortalPage() {
     }
 
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   const cards = [
     { title: 'Hewan Peliharaan', value: petCount === null ? '—' : String(petCount), subtitle: 'Jumlah hewan terdaftar', icon: PawPrint },

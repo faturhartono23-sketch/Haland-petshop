@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Save, Upload, ShieldCheck } from 'lucide-react';
 import { createBackup, getSettingsData, restoreBackup, updateSettings } from '@/actions/settings';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 const initialForm = {
   clinicName: '',
@@ -52,11 +53,7 @@ export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState(initialForm);
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const result = await getSettingsData();
     if (result.success && result.data) {
       const data = result.data;
@@ -103,7 +100,13 @@ export default function SettingsPage() {
     } else {
       setMessage(result.message ?? 'Gagal memuat pengaturan.');
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();

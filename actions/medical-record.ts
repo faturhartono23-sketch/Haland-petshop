@@ -7,6 +7,7 @@ import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
 import { parseStructuredItems, serializeStructuredItems } from '@/lib/medical-record-utils';
 import { getActorRole, getActorId, normalizeOptionalText, normalizeOptionalNumber } from '@/lib/utils';
+import { generateMedicalRecordNumber } from '@/lib/numbering';
 
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = [
@@ -102,15 +103,7 @@ function validateAttachments(value: string | undefined | null) {
 }
 
 async function generateRecordNumber() {
-  const today = new Date();
-  const stamp = today.toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(1000 + Math.random() * 9000);
-  const candidate = `MR-${stamp}-${random}`;
-  const existing = await prisma.medicalRecord.findUnique({ where: { recordNumber: candidate } });
-  if (!existing) {
-    return candidate;
-  }
-  return generateRecordNumber();
+  return generateMedicalRecordNumber();
 }
 
 export async function getMedicalRecordAccess() {

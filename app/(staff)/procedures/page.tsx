@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Package, PencilLine, Trash2 } from 'lucide-react';
 import { createProcedure, deleteProcedure, listProcedures, updateProcedure } from '@/actions/procedure';
 import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency } from '@/lib/utils';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type ProcedureRow = {
   id: string;
@@ -23,18 +24,20 @@ export default function ProceduresPage() {
   const [message, setMessage] = useState('');
   const [form, setForm] = useState({ code: '', name: '', description: '', price: '0' });
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const result = await listProcedures();
     if (result.success) {
       setProcedures(result.procedures ?? []);
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   function resetForm() {
     setEditingId(null);

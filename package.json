@@ -32,7 +32,7 @@
     "zod": "^3.24.0"
   },
   "prisma": {
-    "seed": "node prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
@@ -44,6 +44,7 @@
     "eslint-config-next": "^16.2.10",
     "postcss": "^8.4.49",
     "tailwindcss": "^4.1.11",
+    "tsx": "^4.20.3",
     "typescript": "^5.8.0"
   }
 }

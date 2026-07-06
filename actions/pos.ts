@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db';
 import { isStaffRole } from '@/lib/permissions';
 import { calculatePosTotals, getPaymentStatus, roundCurrency } from '@/lib/pos';
 import { getActorRole } from '@/lib/utils';
+import { generateInvoiceNumber } from '@/lib/numbering';
 
 const productSearchSchema = z.object({
   query: z.string().trim().min(1, 'Pencarian tidak boleh kosong.'),
@@ -113,7 +114,7 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
 
   const items = parsed.data.items;
 
-  const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const invoiceNumber = await generateInvoiceNumber();
 
   try {
     const invoiceResult = await prisma.$transaction(async (tx) => {

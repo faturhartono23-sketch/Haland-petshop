@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { getCustomer } from '@/actions/customer';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type CustomerDetail = {
   id: string;
@@ -22,24 +23,26 @@ export default function CustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError('');
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
 
-      const result = await getCustomer(params.id);
-      if (result.success) {
-        setCustomer(result.customer as CustomerDetail);
-      } else {
-        setCustomer(null);
-        setError(result.message ?? 'Gagal memuat detail pelanggan.');
-      }
-
-      setLoading(false);
+    const result = await getCustomer(params.id);
+    if (result.success) {
+      setCustomer(result.customer as CustomerDetail);
+    } else {
+      setCustomer(null);
+      setError(result.message ?? 'Gagal memuat detail pelanggan.');
     }
 
-    void load();
+    setLoading(false);
   }, [params.id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useRefetchOnFocus(load);
 
   if (loading) {
     return <div className="rounded-xl border border-zinc-200 bg-white p-8 text-sm text-zinc-500">Memuat detail pelanggan...</div>;

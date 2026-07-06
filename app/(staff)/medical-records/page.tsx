@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FileText, Printer, Trash2 } from 'lucide-react';
 import { createMedicalRecord, deleteMedicalRecord, getMedicalRecordAccess, listMedicalRecordOptions, listMedicalRecords, updateMedicalRecord } from '@/actions/medical-record';
 import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatStructuredItemsForInput, parseStructuredItems } from '@/lib/medical-record-utils';
 import { buildMedicalRecordPrefillFromSearchParams } from '@/lib/route-prefill';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type RecordRow = {
   id: string;
@@ -89,20 +90,7 @@ export default function MedicalRecordsPage() {
   const [form, setForm] = useState<MedicalRecordFormState>(initialFormState);
   const searchParams = useSearchParams();
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  useEffect(() => {
-    const prefill = buildMedicalRecordPrefillFromSearchParams(searchParams);
-    if (prefill.appointmentId && !form.appointmentId) {
-      setForm((current) => ({ ...current, appointmentId: prefill.appointmentId }));
-    }
-  }, [form.appointmentId, searchParams]);
-
-  const selectedRecord = useMemo(() => records.find((record) => record.id === selectedRecordId) ?? null, [records, selectedRecordId]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const [recordResult, optionResult, accessResult] = await Promise.all([listMedicalRecords(), listMedicalRecordOptions(), getMedicalRecordAccess()]);
     if (recordResult.success) {
@@ -122,7 +110,22 @@ export default function MedicalRecordsPage() {
       setCanManage(Boolean(accessResult.canManage));
     }
     setLoading(false);
-  }
+  }, [selectedRecordId]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
+
+  useEffect(() => {
+    const prefill = buildMedicalRecordPrefillFromSearchParams(searchParams);
+    if (prefill.appointmentId && !form.appointmentId) {
+      setForm((current) => ({ ...current, appointmentId: prefill.appointmentId }));
+    }
+  }, [form.appointmentId, searchParams]);
+
+  const selectedRecord = useMemo(() => records.find((record) => record.id === selectedRecordId) ?? null, [records, selectedRecordId]);
 
   function resetForm() {
     setEditingId(null);

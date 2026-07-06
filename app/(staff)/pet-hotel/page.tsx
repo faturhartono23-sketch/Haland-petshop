@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DoorOpen, CalendarDays, NotebookPen, Search } from 'lucide-react';
 import { cancelPetHotelBooking, checkInPetHotelBooking, checkOutPetHotelBooking, createPetHotelBooking, createPetHotelLog, createPetHotelRoom, deletePetHotelRoom, listPetHotelBookings, listPetHotelLogs, listPetHotelPets, listPetHotelRooms, updatePetHotelRoom } from '@/actions/pet-hotel';
 import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type RoomRow = {
   id: string;
@@ -50,11 +51,7 @@ export default function PetHotelPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    void loadData();
-  }, [tab]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     if (tab === 'rooms') {
       const [roomsResult, petsResult] = await Promise.all([listPetHotelRooms(), listPetHotelPets()]);
@@ -106,7 +103,13 @@ export default function PetHotelPage() {
       }
     }
     setLoading(false);
-  }
+  }, [tab]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   async function handleRoomSubmit(event: React.FormEvent) {
     event.preventDefault();

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listPets, getPet } from '@/actions/pet';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type PetSummary = {
   id: string;
@@ -26,28 +27,31 @@ export default function CustomerPetsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError('');
-      const result = await listPets();
-      if (result.success) {
-        const petList = (result.pets as PetSummary[]) ?? [];
-        setPets(petList);
-        if (petList[0]) {
-          setSelectedPetId(petList[0].id);
-          const detail = await getPet(petList[0].id);
-          if (detail.success) {
-            setSelectedPet(detail.pet as PetSummary);
-          }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    const result = await listPets();
+    if (result.success) {
+      const petList = (result.pets as PetSummary[]) ?? [];
+      setPets(petList);
+      if (petList[0]) {
+        setSelectedPetId(petList[0].id);
+        const detail = await getPet(petList[0].id);
+        if (detail.success) {
+          setSelectedPet(detail.pet as PetSummary);
         }
-      } else {
-        setError(result.message ?? 'Gagal memuat data hewan.');
       }
-      setLoading(false);
+    } else {
+      setError(result.message ?? 'Gagal memuat data hewan.');
     }
-    void load();
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useRefetchOnFocus(load);
 
   async function handleSelectPet(id: string) {
     setSelectedPetId(id);

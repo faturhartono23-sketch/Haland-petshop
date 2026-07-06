@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FileIcon, Printer } from 'lucide-react';
 import { DataTable } from '@/components/shared/data-table';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { getPortalInvoices } from '@/actions/invoice';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type Invoice = {
   id: string;
@@ -20,16 +21,18 @@ export default function CustomerInvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadInvoices();
-  }, []);
-
-  async function loadInvoices() {
+  const loadInvoices = useCallback(async () => {
     const result = await getPortalInvoices();
     if (result.success) {
       setInvoices((result.invoices ?? []).map((inv: any) => ({ ...inv, date: (inv.date as Date).toISOString() })));
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadInvoices();
+  }, [loadInvoices]);
+
+  useRefetchOnFocus(loadInvoices);
 
   const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) ?? null;
 

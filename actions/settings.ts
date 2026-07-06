@@ -316,8 +316,12 @@ export async function restoreBackup(input: z.infer<typeof restoreBackupSchema>) 
     return { success: false, message: 'Format file backup tidak valid.', data: null };
   }
 
-  if (!payload || typeof payload !== 'object' || !payload.settings) {
+  if (!payload || typeof payload !== 'object' || !payload.settings || typeof payload.settings !== 'object') {
     return { success: false, message: 'Backup tidak berisi data pengaturan yang valid.', data: null };
+  }
+
+  if (payload.version !== 1) {
+    return { success: false, message: 'Versi backup tidak didukung.', data: null };
   }
 
   try {

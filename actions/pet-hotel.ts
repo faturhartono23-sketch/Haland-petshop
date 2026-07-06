@@ -8,6 +8,7 @@ import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
 import { isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, normalizeOptionalText } from '@/lib/utils';
+import { generateBookingNumber } from '@/lib/numbering';
 
 const petHotelRoomSchema = z.object({
   name: z.string().trim().min(1, 'Nama kamar wajib diisi.').max(100),
@@ -56,10 +57,8 @@ function getDayCount(checkInDate: Date, checkOutDate: Date) {
   return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
-function generateBookingNumber() {
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return `PH-${datePart}-${random}`;
+async function generateBookingCode() {
+  return generateBookingNumber();
 }
 
 async function notifyPetHotelChange(userId: string | null | undefined, title: string, message: string) {
@@ -372,7 +371,7 @@ export async function createPetHotelBooking(input: z.infer<typeof petHotelBookin
         checkOutDate,
         status: 'BOOKED',
         requestedByCustomer: parsed.data.requestedByCustomer ?? false,
-        bookingNumber: generateBookingNumber(),
+        bookingNumber: await generateBookingCode(),
         notes: normalizeOptionalText(parsed.data.notes),
       },
     });

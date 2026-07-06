@@ -78,7 +78,6 @@ export const authOptions: NextAuthOptions = {
           }
 
           const normalizedUsername = parsed.data.username.trim().toLowerCase();
-          console.log('[AUTH] Attempting login for:', normalizedUsername);
           const user = await prisma.user.findFirst({
             where: {
               username: {
@@ -89,10 +88,8 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (!user) {
-            console.log('[AUTH] User not found:', normalizedUsername);
             return null;
           }
-          console.log('[AUTH] User found:', user.username, 'isActive:', user.isActive, 'isLocked:', user.isLocked);
 
           if (!user.isActive) {
             await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login ditolak karena akun nonaktif');
@@ -119,10 +116,6 @@ export const authOptions: NextAuthOptions = {
           let isValidPin = false;
           try {
             isValidPin = await bcrypt.compare(parsed.data.pin, user.pinHash);
-            // Temporary: Allow test login for debugging
-            if (!isValidPin && process.env.NODE_ENV === 'development' && parsed.data.pin === '123456') {
-              isValidPin = true;
-            }
           } catch {
             await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login gagal karena kesalahan sistem');
             return null;

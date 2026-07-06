@@ -7,6 +7,7 @@ import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
 import { isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, roundCurrency, normalizeOptionalText } from '@/lib/utils';
+import { generateInvoiceNumber } from '@/lib/numbering';
 
 const invoiceItemSchema = z.object({
   type: z.enum(['KONSULTASI', 'TINDAKAN', 'OBAT', 'PET_HOTEL', 'PRODUK']),
@@ -266,7 +267,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     return { success: false, message: 'Nilai tagihan tidak valid.' };
   }
 
-  const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const invoiceNumber = await generateInvoiceNumber();
   const initialPaymentAmount = roundCurrency(parsed.data.initialPaymentAmount ?? 0);
   const initialPaymentMethod = parsed.data.initialPaymentMethod ?? 'CASH';
 

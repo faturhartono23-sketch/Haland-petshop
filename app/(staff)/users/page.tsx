@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { KeyRound, PencilLine, Plus, RefreshCw, Unlock, UserRoundCheck, UserRoundX } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { activateUser, createUser, deleteUser, listUsers, resetPin, unlockUser, updateUser } from '@/actions/user';
@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { UserFormDialog } from '@/components/users/user-form-dialog';
 import { canPerformAction, getRoleLabel, type Role } from '@/lib/permissions';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type UserRow = {
   id: string;
@@ -52,11 +53,7 @@ export default function UsersPage() {
   const canUpdateUsers = Boolean(actorRole && canPerformAction(actorRole, 'users', 'update'));
   const canDeleteUsers = Boolean(actorRole && canPerformAction(actorRole, 'users', 'delete'));
 
-  useEffect(() => {
-    void loadUsers();
-  }, []);
-
-  async function loadUsers() {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     setMessage('');
     const result = await listUsers();
@@ -70,7 +67,13 @@ export default function UsersPage() {
       setMessage(result.message ?? 'Gagal memuat daftar pengguna.');
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
+
+  useRefetchOnFocus(loadUsers);
 
   function openCreateDialog() {
     if (!canCreateUsers) {

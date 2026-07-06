@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CreditCard, FileIcon, Printer, Plus, Trash2, Wallet } from 'lucide-react';
 import { DataTable } from '@/components/shared/data-table';
@@ -9,6 +9,7 @@ import { cancelInvoice, createInvoice, getInvoiceLookups, listInvoices, recordIn
 import { listProducts } from '@/actions/product';
 import { parseStructuredItems } from '@/lib/medical-record-utils';
 import { buildInvoicePrefillFromSearchParams } from '@/lib/route-prefill';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type InvoiceItemForm = {
   type: 'KONSULTASI' | 'TINDAKAN' | 'OBAT' | 'PET_HOTEL' | 'PRODUK';
@@ -68,11 +69,7 @@ export default function BillingPage() {
   const [paymentForm, setPaymentForm] = useState({ amount: '0', method: 'CASH' as 'CASH' | 'NON_CASH' });
   const prefillKeyRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const [lookupResult, invoicesResult, productsResult] = await Promise.all([getInvoiceLookups(), listInvoices(), listProducts()]);
     if (lookupResult.success) {
       setCustomers(lookupResult.customers ?? []);
@@ -82,7 +79,13 @@ export default function BillingPage() {
     }
     if (invoicesResult.success) setInvoices((invoicesResult.invoices ?? []).map((inv: any) => ({ ...inv, date: (inv.date as Date).toISOString() })));
     if (productsResult.success) setProducts((productsResult.products ?? []).map((product: any) => ({ id: product.id, name: product.name, sellPrice: Number(product.sellPrice ?? 0), stock: Number(product.stock ?? 0) })));
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   useEffect(() => {
     const prefill = buildInvoicePrefillFromSearchParams(searchParams);

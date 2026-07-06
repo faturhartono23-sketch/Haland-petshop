@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarPlus, CheckCircle2, CircleSlash, PencilLine } from 'lucide-react';
 import { cancelAppointment, createAppointment, listAppointmentLookups, listAppointments, updateAppointment } from '@/actions/appointment';
 import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type AppointmentRow = {
   id: string;
@@ -37,19 +38,7 @@ export default function AppointmentsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ petId: '', customerId: '', doctorId: '', date: '', queueNumber: '', status: 'WAITING' as 'WAITING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED' });
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  const availablePets = useMemo(() => {
-    if (!form.customerId) {
-      return pets;
-    }
-
-    return pets.filter((pet) => pet.customer?.id === form.customerId);
-  }, [pets, form.customerId]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setMessage('');
     setIsErrorMessage(false);
@@ -67,7 +56,21 @@ export default function AppointmentsPage() {
       setDoctors(lookupResult.doctors as LookupOption[]);
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
+
+  const availablePets = useMemo(() => {
+    if (!form.customerId) {
+      return pets;
+    }
+
+    return pets.filter((pet) => pet.customer?.id === form.customerId);
+  }, [pets, form.customerId]);
 
   function resetForm() {
     setEditingId(null);

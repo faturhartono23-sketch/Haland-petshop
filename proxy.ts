@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
+export async function middleware(request: NextRequest) {
+  return proxy(request);
+}
+
 const STAFF_PREFIXES = [
   '/dashboard',
   '/customers',

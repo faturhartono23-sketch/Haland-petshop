@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { Banknote, BarChart3, CalendarDays, PawPrint, Receipt, Stethoscope, Users, Warehouse, RefreshCw } from 'lucide-react';
 import { getReportSummary } from '@/actions/report';
 import { formatCurrency } from '@/lib/utils';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type DoctorSummary = {
   myAppointmentsToday: number;
@@ -61,6 +62,8 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadData();
   }, [loadData, role]);
+
+  useRefetchOnFocus(loadData);
 
   const isDoctor = role === 'DOKTER';
   const isOwner = role === 'OWNER';

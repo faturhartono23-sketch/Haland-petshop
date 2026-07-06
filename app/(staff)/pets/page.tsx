@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { createPet, deletePet, listPets, updatePet } from '@/actions/pet';
@@ -9,6 +9,7 @@ import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { FormDialog } from '@/components/shared/form-dialog';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type PetRow = {
   id: string;
@@ -58,11 +59,7 @@ export default function PetsPage() {
   const [speciesFilter, setSpeciesFilter] = useState('all');
   const [ownerFilter, setOwnerFilter] = useState('all');
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setMessage('');
     setIsErrorMessage(false);
@@ -82,7 +79,13 @@ export default function PetsPage() {
     }
 
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   function openCreate() {
     setEditingId(null);

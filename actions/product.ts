@@ -235,7 +235,7 @@ export async function deleteSupplier(id: string) {
 }
 
 // PRODUCTS
-export async function listProducts() {
+export async function listProducts(includeArchived = false) {
   const session = await auth();
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
@@ -245,6 +245,7 @@ export async function listProducts() {
   }
 
   const products = await prisma.product.findMany({
+    where: includeArchived ? undefined : { isArchived: false },
     orderBy: { name: 'asc' },
     include: { category: { select: { name: true } }, supplier: { select: { name: true } } },
   });

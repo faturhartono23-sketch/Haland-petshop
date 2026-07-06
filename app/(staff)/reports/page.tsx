@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Download, Printer, RefreshCw, Search as SearchIcon } from 'lucide-react';
 import { getReportData, getReportSummary } from '@/actions/report';
+import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type ReportSummary = Record<string, number | string>;
 type ReportRow = Record<string, unknown>;
@@ -89,11 +90,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setMessage('');
     const [summaryResult, reportResult] = await Promise.all([
@@ -111,7 +108,13 @@ export default function ReportsPage() {
       setMessage(reportResult.message ?? 'Gagal memuat laporan.');
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useRefetchOnFocus(loadData);
 
   async function loadReport(event?: FormEvent) {
     event?.preventDefault();
