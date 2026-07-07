@@ -368,6 +368,7 @@ model Invoice {
   doctorId        String?
   createdById     String?
   invoiceNumber   String        @unique
+  walkInName      String?
   status          InvoiceStatus @default(UNPAID)
   subtotal        Float         @default(0)
   discountAmount  Float         @default(0)

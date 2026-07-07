@@ -26,7 +26,9 @@ const listProductCategoriesSchema = z.object({});
 
 const createPosSaleSchema = z.object({
   customerId: z.string().trim().optional().or(z.literal('')),
-  isWalkIn: z.boolean().optional().default(false),
+  walkInName: z.string().trim().max(100).optional(),
+  discountType: z.enum(['PERCENTAGE', 'FIXED']).default('PERCENTAGE'),
+  discountAmount: z.coerce.number().min(0, 'Diskon tidak boleh negatif.').optional(),
   items: z
     .array(
       z.object({
@@ -37,7 +39,6 @@ const createPosSaleSchema = z.object({
       }),
     )
     .min(1, 'Keranjang tidak boleh kosong.'),
-  discountAmount: z.coerce.number().min(0, 'Diskon tidak boleh negatif.').optional(),
   paymentMethod: z.enum(['CASH', 'NON_CASH'], { errorMap: () => ({ message: 'Metode pembayaran tidak valid.' }) }),
   paymentAmount: z.coerce.number().min(0, 'Jumlah pembayaran tidak boleh negatif.'),
   taxRate: z.coerce.number().min(0, 'Pajak tidak boleh negatif.').optional(),
@@ -176,12 +177,23 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
     return { success: false, message: 'Anda tidak berwenang melakukan penjualan POS.' };
   }
 
-  if (!parsed.data.customerId && !parsed.data.isWalkIn) {
-    return { success: false, message: 'Pelanggan wajib dipilih untuk transaksi POS.' };
+  const hasManualBuyer = Boolean(parsed.data.walkInName?.trim());
+  const hasSelectedCustomer = Boolean(parsed.data.customerId?.trim());
+
+  if (!hasManualBuyer && !hasSelectedCustomer) {
+    return { success: false, message: 'Pelanggan wajib dipilih atau isi nama pembeli manual.' };
+  }
+
+  if (parsed.data.discountType === 'PERCENTAGE' && (parsed.data.discountAmount ?? 0) > 100) {
+    return { success: false, message: 'Diskon persentase tidak boleh lebih dari 100%.' };
+  }
+
+  if (parsed.data.discountType === 'FIXED' && (parsed.data.discountAmount ?? 0) > 0 && parsed.data.discountAmount! > 999999999) {
+    return { success: false, message: 'Diskon nominal terlalu besar.' };
   }
 
   let resolvedCustomerId: string;
-  if (parsed.data.isWalkIn) {
+  if (hasManualBuyer && !hasSelectedCustomer) {
     const guestCustomer = await getOrCreateGuestCustomer();
     resolvedCustomerId = guestCustomer.id;
   } else {
@@ -232,9 +244,13 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
 
       const subtotal = roundCurrency(validatedItems.reduce((sum, item) => sum + item.subtotal, 0));
       const taxRate = parsed.data.taxRate ?? 0;
-      const totals = calculatePosTotals(subtotal, parsed.data.discountAmount ?? 0, taxRate);
+      const discountValue = parsed.data.discountAmount ?? 0;
+      const discountAmount = parsed.data.discountType === 'PERCENTAGE'
+        ? roundCurrency((subtotal * Math.min(discountValue, 100)) / 100)
+        : roundCurrency(Math.min(discountValue, subtotal));
+      const totals = calculatePosTotals(subtotal, discountAmount, taxRate);
 
-      if (parsed.data.paymentAmount < totals.totalAmount) {
+      if (parsed.data.paymentMethod === 'CASH' && parsed.data.paymentAmount < totals.totalAmount) {
         throw new Error('Jumlah pembayaran kurang dari total transaksi.');
       }
 
@@ -243,6 +259,7 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
       const createdInvoice = await tx.invoice.create({
         data: {
           customerId: resolvedCustomerId,
+          walkInName: hasManualBuyer ? parsed.data.walkInName?.trim() : null,
           invoiceNumber,
           status,
           subtotal: totals.subtotal,

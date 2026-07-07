@@ -32,6 +32,7 @@ type InvoiceRow = {
   notes?: string | null;
   date: string;
   customer: { name: string };
+  walkInName?: string | null;
   items?: Array<{ id: string; description: string; qty: number; price: number; subtotal: number; type: string }>;
   payments?: Array<{ id: string; amount: number; method: string; date: string }>;
 };
@@ -280,8 +281,9 @@ export default function BillingPage() {
   }
 
   function printInvoice(invoice: any) {
+    const customerName = invoice.walkInName?.trim() || invoice.customer.name;
     const paymentTotal = (invoice.payments ?? []).reduce((sum: number, payment: any) => sum + payment.amount, 0);
-    const html = `<!DOCTYPE html><html><head><title>Invoice ${invoice.invoiceNumber}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1,h2,h3{margin:0}table{width:100%;border-collapse:collapse;margin-top:16px}td,th{padding:8px;border:1px solid #ccc;text-align:left}strong{display:inline-block;width:140px}</style></head><body><h1>Invoice</h1><p><strong>No. Invoice:</strong> ${invoice.invoiceNumber}</p><p><strong>Pelanggan:</strong> ${invoice.customer.name}</p><p><strong>Tanggal:</strong> ${formatDate(invoice.date)}</p><p><strong>Status:</strong> ${invoice.status}</p><table><thead><tr><th>Jenis</th><th>Deskripsi</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr></thead><tbody>${(invoice.items ?? []).map((item: any) => `<tr><td>${item.type}</td><td>${item.description}</td><td>${item.qty}</td><td>${formatCurrency(item.price)}</td><td>${formatCurrency(item.subtotal)}</td></tr>`).join('')}</tbody></table><p><strong>Subtotal:</strong> ${formatCurrency(invoice.subtotal ?? 0)}</p><p><strong>Diskon:</strong> ${formatCurrency(invoice.discountAmount ?? 0)}</p><p><strong>Pajak:</strong> ${formatCurrency(invoice.taxAmount ?? 0)}</p><p><strong>Total:</strong> ${formatCurrency(invoice.totalAmount)}</p><p><strong>Pembayaran:</strong> ${formatCurrency(paymentTotal)}</p></body></html>`;
+    const html = `<!DOCTYPE html><html><head><title>Invoice ${invoice.invoiceNumber}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1,h2,h3{margin:0}table{width:100%;border-collapse:collapse;margin-top:16px}td,th{padding:8px;border:1px solid #ccc;text-align:left}strong{display:inline-block;width:140px}</style></head><body><h1>Invoice</h1><p><strong>No. Invoice:</strong> ${invoice.invoiceNumber}</p><p><strong>Pelanggan:</strong> ${customerName}</p><p><strong>Tanggal:</strong> ${formatDate(invoice.date)}</p><p><strong>Status:</strong> ${invoice.status}</p><table><thead><tr><th>Jenis</th><th>Deskripsi</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr></thead><tbody>${(invoice.items ?? []).map((item: any) => `<tr><td>${item.type}</td><td>${item.description}</td><td>${item.qty}</td><td>${formatCurrency(item.price)}</td><td>${formatCurrency(item.subtotal)}</td></tr>`).join('')}</tbody></table><p><strong>Subtotal:</strong> ${formatCurrency(invoice.subtotal ?? 0)}</p><p><strong>Diskon:</strong> ${formatCurrency(invoice.discountAmount ?? 0)}</p><p><strong>Pajak:</strong> ${formatCurrency(invoice.taxAmount ?? 0)}</p><p><strong>Total:</strong> ${formatCurrency(invoice.totalAmount)}</p><p><strong>Pembayaran:</strong> ${formatCurrency(paymentTotal)}</p></body></html>`;
     const popup = window.open('', '_blank');
     if (popup) {
       popup.document.write(html);
@@ -292,8 +294,9 @@ export default function BillingPage() {
   }
 
   function downloadInvoice(invoice: any) {
+    const customerName = invoice.walkInName?.trim() || invoice.customer.name;
     const paymentTotal = (invoice.payments ?? []).reduce((sum: number, payment: any) => sum + payment.amount, 0);
-    const html = `<!DOCTYPE html><html><head><title>Invoice ${invoice.invoiceNumber}</title></head><body><h1>Invoice</h1><p>No. Invoice: ${invoice.invoiceNumber}</p><p>Pelanggan: ${invoice.customer.name}</p><p>Tanggal: ${formatDate(invoice.date)}</p><p>Status: ${invoice.status}</p><p>Subtotal: ${formatCurrency(invoice.subtotal ?? 0)}</p><p>Diskon: ${formatCurrency(invoice.discountAmount ?? 0)}</p><p>Pajak: ${formatCurrency(invoice.taxAmount ?? 0)}</p><p>Total: ${formatCurrency(invoice.totalAmount)}</p><p>Pembayaran: ${formatCurrency(paymentTotal)}</p></body></html>`;
+    const html = `<!DOCTYPE html><html><head><title>Invoice ${invoice.invoiceNumber}</title></head><body><h1>Invoice</h1><p>No. Invoice: ${invoice.invoiceNumber}</p><p>Pelanggan: ${customerName}</p><p>Tanggal: ${formatDate(invoice.date)}</p><p>Status: ${invoice.status}</p><p>Subtotal: ${formatCurrency(invoice.subtotal ?? 0)}</p><p>Diskon: ${formatCurrency(invoice.discountAmount ?? 0)}</p><p>Pajak: ${formatCurrency(invoice.taxAmount ?? 0)}</p><p>Total: ${formatCurrency(invoice.totalAmount)}</p><p>Pembayaran: ${formatCurrency(paymentTotal)}</p></body></html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -307,7 +310,7 @@ export default function BillingPage() {
     ...invoice,
     date: formatDate(invoice.date),
     totalAmount: invoice.totalAmount,
-    customer: invoice.customer,
+    customer: { name: invoice.walkInName?.trim() || invoice.customer.name },
   }));
 
   return (
@@ -624,7 +627,7 @@ export default function BillingPage() {
                   </div>
                 </div>
                 <div className="mt-4 grid gap-2 text-sm text-zinc-700">
-                  <p><strong>Pelanggan:</strong> {selectedInvoice.customer.name}</p>
+                  <p><strong>Pelanggan:</strong> {selectedInvoice.walkInName?.trim() || selectedInvoice.customer.name}</p>
                   <p><strong>Tanggal:</strong> {selectedInvoice.date}</p>
                   <p><strong>Status:</strong> {selectedInvoice.status}</p>
                   <p><strong>Subtotal:</strong> {formatCurrency(selectedInvoice.subtotal ?? 0)}</p>
