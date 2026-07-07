@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL_UNPOOLED")
+  directUrl = env("DIRECT_URL")
 }
 
 enum UserRole {
@@ -108,6 +108,7 @@ model Customer {
   id               String  @id @default(cuid())
   userId           String? @unique
   name             String
+  isGuest          Boolean @default(false)
   phone            String?
   email            String?
   address          String?
@@ -120,6 +121,9 @@ model Customer {
   appointments   Appointment[]
   medicalRecords MedicalRecord[]
   invoices       Invoice[]
+
+  @@unique([name, isGuest])
+  @@index([isGuest])
 }
 
 model Pet {
@@ -250,9 +254,10 @@ model PetHotelBooking {
   requestedByCustomer Boolean               @default(false)
   notes               String?
 
-  pet  Pet           @relation(fields: [petId], references: [id])
-  room PetHotelRoom? @relation(fields: [roomId], references: [id])
-  logs PetHotelLog[]
+  pet          Pet           @relation(fields: [petId], references: [id])
+  room         PetHotelRoom? @relation(fields: [roomId], references: [id])
+  logs         PetHotelLog[]
+  invoiceItems InvoiceItem[]
 
   @@index([status, checkInDate, checkOutDate])
   @@index([roomId, checkInDate, checkOutDate])
@@ -381,19 +386,21 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id          String          @id @default(cuid())
-  invoiceId   String
-  productId   String?
-  procedureId String?
-  type        InvoiceItemType
-  description String
-  qty         Int             @default(1)
-  price       Float           @default(0)
-  subtotal    Float           @default(0)
+  id                String          @id @default(cuid())
+  invoiceId         String
+  productId         String?
+  procedureId       String?
+  petHotelBookingId String?
+  type              InvoiceItemType
+  description       String
+  qty               Int             @default(1)
+  price             Float           @default(0)
+  subtotal          Float           @default(0)
 
-  invoice   Invoice    @relation(fields: [invoiceId], references: [id])
-  product   Product?   @relation(fields: [productId], references: [id])
-  procedure Procedure? @relation(fields: [procedureId], references: [id])
+  invoice         Invoice          @relation(fields: [invoiceId], references: [id])
+  product         Product?         @relation(fields: [productId], references: [id])
+  procedure       Procedure?       @relation(fields: [procedureId], references: [id])
+  petHotelBooking PetHotelBooking? @relation(fields: [petHotelBookingId], references: [id])
 }
 
 model Payment {

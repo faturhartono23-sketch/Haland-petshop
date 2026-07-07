@@ -2,13 +2,13 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
 import { isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, roundCurrency, normalizeOptionalText } from '@/lib/utils';
 import { generateInvoiceNumber } from '@/lib/numbering';
 import { deductProductStock, restoreProductStock, validateStockAvailability } from '@/lib/inventory-helpers';
+import { notifyUser } from '@/lib/notifications-helper';
 
 const invoiceItemSchema = z.object({
   type: z.enum(['KONSULTASI', 'TINDAKAN', 'OBAT', 'PET_HOTEL', 'PRODUK']),
@@ -17,6 +17,7 @@ const invoiceItemSchema = z.object({
   price: z.coerce.number().min(0, 'Harga tidak boleh negatif.'),
   productId: z.string().trim().optional().or(z.literal('')),
   procedureId: z.string().trim().optional().or(z.literal('')),
+  petHotelBookingId: z.string().trim().optional().or(z.literal('')),
 });
 
 const createInvoiceSchema = z.object({
@@ -41,18 +42,6 @@ const recordPaymentSchema = z.object({
 
 const cancelInvoiceSchema = z.object({ id: z.string().min(1) });
 
-async function notifyInvoiceChange(userId: string | null | undefined, title: string, message: string) {
-  if (!userId) {
-    return;
-  }
-
-  try {
-    await createNotification({ userId, title, message, type: 'invoice' });
-  } catch {
-    // ignore notification errors so invoice workflows remain resilient
-  }
-}
-
 export async function getInvoiceLookups() {
   const session = await auth();
   const actorRole = getActorRole(session);
@@ -62,7 +51,7 @@ export async function getInvoiceLookups() {
   }
 
   const [customers, appointments, medicalRecords, doctors, procedures] = await Promise.all([
-    prisma.customer.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    prisma.customer.findMany({ where: { isGuest: false }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     prisma.appointment.findMany({
       orderBy: { date: 'desc' },
       select: {
@@ -190,6 +179,10 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     .filter((item) => item.type === 'TINDAKAN' && item.procedureId)
     .map((item) => item.procedureId as string);
 
+  const petHotelBookingIds = parsed.data.items
+    .filter((item) => item.type === 'PET_HOTEL' && item.petHotelBookingId)
+    .map((item) => item.petHotelBookingId as string);
+
   const productStockDeductionItems = parsed.data.items
     .filter((item) => item.type === 'PRODUK' && item.productId)
     .map((item) => ({ productId: item.productId as string, qty: item.qty }));
@@ -201,18 +194,28 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     }
   }
 
-  const [products, procedures] = await Promise.all([
+  const [products, procedures, bookings] = await Promise.all([
     Promise.all(productIds.map((productId) => prisma.product.findUnique({ where: { id: productId } }))),
     Promise.all(procedureIds.map((procedureId) => prisma.procedure.findUnique({ where: { id: procedureId } }))),
+    petHotelBookingIds.length > 0
+      ? prisma.petHotelBooking.findMany({ where: { id: { in: petHotelBookingIds } }, include: { pet: true } })
+      : Promise.resolve([]),
   ]);
 
-  const productsById = new Map(
-    products.filter((product): product is Exclude<typeof product, null> => Boolean(product)).map((product) => [product.id, product]),
-  );
+  const productsById = new Map<string, NonNullable<typeof products[number]>>();
+  for (const p of products) {
+    if (p) productsById.set(p.id, p);
+  }
 
-  const proceduresById = new Map(
-    procedures.filter((procedure): procedure is Exclude<typeof procedure, null> => Boolean(procedure)).map((procedure) => [procedure.id, procedure]),
-  );
+  const proceduresById = new Map<string, NonNullable<typeof procedures[number]>>();
+  for (const pr of procedures) {
+    if (pr) proceduresById.set(pr.id, pr);
+  }
+
+  const bookingsById = new Map<string, typeof bookings[number]>();
+  for (const b of bookings) {
+    bookingsById.set(b.id, b);
+  }
 
   const invoiceItems = parsed.data.items.map((item) => {
     if (item.type === 'PRODUK') {
@@ -235,6 +238,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
         subtotal: roundCurrency(item.qty * price),
         productId: product.id,
         procedureId: null,
+        petHotelBookingId: null,
       };
     }
 
@@ -254,6 +258,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
         subtotal: roundCurrency(item.qty * price),
         productId: null,
         procedureId: procedure.id,
+        petHotelBookingId: null,
       };
     }
 
@@ -265,6 +270,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
       subtotal: roundCurrency(item.qty * item.price),
       productId: item.productId || null,
       procedureId: null,
+      petHotelBookingId: item.petHotelBookingId || null,
     };
   });
 
@@ -318,6 +324,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
               subtotal: item.subtotal,
               productId: item.productId,
               procedureId: item.procedureId,
+              petHotelBookingId: item.petHotelBookingId,
             })),
           },
           ...(initialPaymentAmount > 0
@@ -355,7 +362,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
   }
 
   await createAuditLog(actorId, 'CREATE', 'Invoice', invoice.id, `Membuat invoice ${invoice.invoiceNumber}`);
-  await notifyInvoiceChange(customer.userId, 'Invoice dibuat', `Invoice ${invoice.invoiceNumber} telah dibuat untuk Anda.`);
+  await notifyUser(customer.userId, 'Invoice dibuat', `Invoice ${invoice.invoiceNumber} telah dibuat untuk Anda.`, 'invoice');
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');
   revalidatePath('/dashboard');
@@ -424,7 +431,7 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
   });
 
   await createAuditLog(actorId, 'PAYMENT', 'Invoice', updatedInvoice.id, `Mencatat pembayaran invoice ${updatedInvoice.invoiceNumber}`);
-  await notifyInvoiceChange(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Pembayaran tercatat', `Pembayaran untuk invoice ${updatedInvoice.invoiceNumber} telah diterima.`);
+  await notifyUser(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Pembayaran tercatat', `Pembayaran untuk invoice ${updatedInvoice.invoiceNumber} telah diterima.`, 'invoice');
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');
   revalidatePath('/dashboard');
@@ -475,13 +482,25 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
 
     if (productStockDeductionItems.length > 0) {
       await restoreProductStock(tx, productStockDeductionItems);
+      await Promise.all(
+        productStockDeductionItems.map((item) =>
+          tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'RETURN',
+              quantity: item.qty,
+              note: `Produk dikembalikan dari pembatalan invoice ${updated.invoiceNumber}`,
+            },
+          }),
+        ),
+      );
     }
 
     return updated;
   });
 
   await createAuditLog(actorId, 'CANCEL', 'Invoice', updatedInvoice.id, `Membatalkan invoice ${updatedInvoice.invoiceNumber}`);
-  await notifyInvoiceChange(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Invoice dibatalkan', `Invoice ${updatedInvoice.invoiceNumber} telah dibatalkan.`);
+  await notifyUser(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Invoice dibatalkan', `Invoice ${updatedInvoice.invoiceNumber} telah dibatalkan.`, 'invoice');
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');
   revalidatePath('/dashboard');

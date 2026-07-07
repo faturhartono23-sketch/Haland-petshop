@@ -2,12 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
 import { parseStructuredItems, serializeStructuredItems } from '@/lib/medical-record-utils';
 import { getActorRole, getActorId, normalizeOptionalText, normalizeOptionalNumber } from '@/lib/utils';
 import { generateMedicalRecordNumber } from '@/lib/numbering';
+import { notifyUser } from '@/lib/notifications-helper';
 
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = [
@@ -44,20 +44,6 @@ const medicalRecordSchema = z.object({
 const updateMedicalRecordSchema = medicalRecordSchema.extend({
   id: z.string().trim().min(1, 'ID rekam medis wajib ada.'),
 });
-
-async function notifyMedicalRecordChange(userId: string | null | undefined, title: string, message: string) {
-  if (!userId) {
-    return;
-  }
-
-  try {
-    await createNotification({ userId, title, message, type: 'medical-record' });
-  } catch {
-    // ignore notification failures to keep record creation resilient
-  }
-}
-
-
 
 function serializeMedicalRecordItems(value: string | undefined | null) {
   const items = parseStructuredItems(value);
@@ -237,41 +223,53 @@ export async function createMedicalRecord(input: z.infer<typeof medicalRecordSch
   }
 
   const recordNumber = await generateRecordNumber();
-  const record = await prisma.medicalRecord.create({
-    data: {
-      recordNumber,
-      appointmentId: parsed.data.appointmentId,
-      customerId: appointment.customerId,
-      petId: appointment.petId,
-      doctorId: actorId,
-      date: new Date(parsed.data.date),
-      chiefComplaint: normalizeOptionalText(parsed.data.chiefComplaint),
-      history: normalizeOptionalText(parsed.data.history),
-      physicalExam: normalizeOptionalText(parsed.data.physicalExam),
-      vitalSigns: normalizeOptionalText(parsed.data.vitalSigns),
-      weight: normalizeOptionalNumber(parsed.data.weight as string | undefined),
-      temperature: normalizeOptionalNumber(parsed.data.temperature as string | undefined),
-      heartRate: normalizeOptionalNumber(parsed.data.heartRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.heartRate as string | undefined))) : null,
-      respiratoryRate: normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined))) : null,
-      diagnosis: normalizeOptionalText(parsed.data.diagnosis),
-      treatment: serializeMedicalRecordItems(parsed.data.treatment),
-      prescription: serializeMedicalRecordItems(parsed.data.prescription),
-      labResult: normalizeOptionalText(parsed.data.labResult),
-      notes: normalizeOptionalText(parsed.data.notes),
-      status: parsed.data.status ?? 'COMPLETED',
-      attachments: attachmentValidation.attachments ? JSON.stringify(attachmentValidation.attachments) : null,
-    },
-  });
+  const record = await prisma.$transaction(async (tx) => {
+    const created = await tx.medicalRecord.create({
+      data: {
+        recordNumber,
+        appointmentId: parsed.data.appointmentId,
+        customerId: appointment.customerId,
+        petId: appointment.petId,
+        doctorId: actorId,
+        date: new Date(parsed.data.date),
+        chiefComplaint: normalizeOptionalText(parsed.data.chiefComplaint),
+        history: normalizeOptionalText(parsed.data.history),
+        physicalExam: normalizeOptionalText(parsed.data.physicalExam),
+        vitalSigns: normalizeOptionalText(parsed.data.vitalSigns),
+        weight: normalizeOptionalNumber(parsed.data.weight as string | undefined),
+        temperature: normalizeOptionalNumber(parsed.data.temperature as string | undefined),
+        heartRate: normalizeOptionalNumber(parsed.data.heartRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.heartRate as string | undefined))) : null,
+        respiratoryRate: normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined))) : null,
+        diagnosis: normalizeOptionalText(parsed.data.diagnosis),
+        treatment: serializeMedicalRecordItems(parsed.data.treatment),
+        prescription: serializeMedicalRecordItems(parsed.data.prescription),
+        labResult: normalizeOptionalText(parsed.data.labResult),
+        notes: normalizeOptionalText(parsed.data.notes),
+        status: parsed.data.status ?? 'COMPLETED',
+        attachments: attachmentValidation.attachments ? JSON.stringify(attachmentValidation.attachments) : null,
+      },
+    });
 
-  await prisma.appointment.update({
-    where: { id: parsed.data.appointmentId },
-    data: { status: 'DONE' },
+    await tx.appointment.update({
+      where: { id: parsed.data.appointmentId },
+      data: { status: 'DONE' },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'CREATE',
+        entity: 'MedicalRecord',
+        entityId: created.id,
+        description: `Membuat rekam medis ${created.recordNumber}`,
+      },
+    });
+
+    return created;
   });
 
   const customerUser = await prisma.customer.findUnique({ where: { id: appointment.customerId }, select: { userId: true } });
-  await notifyMedicalRecordChange(customerUser?.userId, 'Rekam medis dibuat', `Rekam medis untuk ${appointment.pet.name} telah dibuat.`);
-
-  await createAuditLog(actorId, 'CREATE', 'MedicalRecord', record.id, `Membuat rekam medis ${record.recordNumber}`);
+  await notifyUser(customerUser?.userId, 'Rekam medis dibuat', `Rekam medis untuk ${appointment.pet.name} telah dibuat.`, 'medical-record');
   revalidatePath('/medical-records');
   return { success: true, record };
 }
@@ -308,38 +306,50 @@ export async function updateMedicalRecord(input: z.infer<typeof updateMedicalRec
     return { success: false, message: attachmentValidation.message };
   }
 
-  const record = await prisma.medicalRecord.update({
-    where: { id: parsed.data.id },
-    data: {
-      date: new Date(parsed.data.date),
-      chiefComplaint: normalizeOptionalText(parsed.data.chiefComplaint),
-      history: normalizeOptionalText(parsed.data.history),
-      physicalExam: normalizeOptionalText(parsed.data.physicalExam),
-      vitalSigns: normalizeOptionalText(parsed.data.vitalSigns),
-      weight: normalizeOptionalNumber(parsed.data.weight as string | undefined),
-      temperature: normalizeOptionalNumber(parsed.data.temperature as string | undefined),
-      heartRate: normalizeOptionalNumber(parsed.data.heartRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.heartRate as string | undefined))) : null,
-      respiratoryRate: normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined))) : null,
-      diagnosis: normalizeOptionalText(parsed.data.diagnosis),
-      treatment: serializeMedicalRecordItems(parsed.data.treatment),
-      prescription: serializeMedicalRecordItems(parsed.data.prescription),
-      labResult: normalizeOptionalText(parsed.data.labResult),
-      notes: normalizeOptionalText(parsed.data.notes),
-      status: parsed.data.status ?? existing.status,
-      attachments: attachmentValidation.attachments ? JSON.stringify(attachmentValidation.attachments) : null,
-      version: existing.version + 1,
-    },
-  });
+  const record = await prisma.$transaction(async (tx) => {
+    const updated = await tx.medicalRecord.update({
+      where: { id: parsed.data.id },
+      data: {
+        date: new Date(parsed.data.date),
+        chiefComplaint: normalizeOptionalText(parsed.data.chiefComplaint),
+        history: normalizeOptionalText(parsed.data.history),
+        physicalExam: normalizeOptionalText(parsed.data.physicalExam),
+        vitalSigns: normalizeOptionalText(parsed.data.vitalSigns),
+        weight: normalizeOptionalNumber(parsed.data.weight as string | undefined),
+        temperature: normalizeOptionalNumber(parsed.data.temperature as string | undefined),
+        heartRate: normalizeOptionalNumber(parsed.data.heartRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.heartRate as string | undefined))) : null,
+        respiratoryRate: normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined) ? Math.round(Number(normalizeOptionalNumber(parsed.data.respiratoryRate as string | undefined))) : null,
+        diagnosis: normalizeOptionalText(parsed.data.diagnosis),
+        treatment: serializeMedicalRecordItems(parsed.data.treatment),
+        prescription: serializeMedicalRecordItems(parsed.data.prescription),
+        labResult: normalizeOptionalText(parsed.data.labResult),
+        notes: normalizeOptionalText(parsed.data.notes),
+        status: parsed.data.status ?? existing.status,
+        attachments: attachmentValidation.attachments ? JSON.stringify(attachmentValidation.attachments) : null,
+        version: existing.version + 1,
+      },
+    });
 
-  await prisma.appointment.update({
-    where: { id: existing.appointmentId },
-    data: { status: 'DONE' },
+    await tx.appointment.update({
+      where: { id: existing.appointmentId },
+      data: { status: 'DONE' },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'UPDATE',
+        entity: 'MedicalRecord',
+        entityId: updated.id,
+        description: `Memperbarui rekam medis ${updated.recordNumber}`,
+      },
+    });
+
+    return updated;
   });
 
   const customerUser = await prisma.customer.findUnique({ where: { id: existing.customerId }, select: { userId: true } });
-  await notifyMedicalRecordChange(customerUser?.userId, 'Rekam medis diperbarui', `Rekam medis untuk pasien Anda telah diperbarui.`);
-
-  await createAuditLog(actorId, 'UPDATE', 'MedicalRecord', record.id, `Memperbarui rekam medis ${record.recordNumber}`);
+  await notifyUser(customerUser?.userId, 'Rekam medis diperbarui', `Rekam medis untuk pasien Anda telah diperbarui.`, 'medical-record');
   revalidatePath('/medical-records');
   return { success: true, record };
 }
@@ -366,8 +376,20 @@ export async function deleteMedicalRecord(id: string) {
     return { success: false, message: 'Anda hanya bisa menghapus rekam medis pasien yang Anda tangani.' };
   }
 
-  const deleted = await prisma.medicalRecord.delete({ where: { id } });
-  await createAuditLog(actorId, 'DELETE', 'MedicalRecord', deleted.id, `Menghapus rekam medis ${deleted.recordNumber}`);
+  const deleted = await prisma.$transaction(async (tx) => {
+    const removed = await tx.medicalRecord.delete({ where: { id } });
+    await tx.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'DELETE',
+        entity: 'MedicalRecord',
+        entityId: removed.id,
+        description: `Menghapus rekam medis ${removed.recordNumber}`,
+      },
+    });
+    return removed;
+  });
+
   revalidatePath('/medical-records');
   return { success: true, record: deleted };
 }

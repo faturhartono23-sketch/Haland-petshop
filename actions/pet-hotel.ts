@@ -3,12 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createInvoice } from '@/actions/invoice';
-import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
 import { isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, normalizeOptionalText } from '@/lib/utils';
 import { generateBookingNumber } from '@/lib/numbering';
+import { notifyUser } from '@/lib/notifications-helper';
 
 const petHotelRoomSchema = z.object({
   name: z.string().trim().min(1, 'Nama kamar wajib diisi.').max(100),
@@ -61,18 +61,6 @@ function getDayCount(checkInDate: Date, checkOutDate: Date) {
 
 async function generateBookingCode() {
   return generateBookingNumber();
-}
-
-async function notifyPetHotelChange(userId: string | null | undefined, title: string, message: string) {
-  if (!userId) {
-    return;
-  }
-
-  try {
-    await createNotification({ userId, title, message, type: 'pet-hotel' });
-  } catch {
-    // ignore notification errors so booking flows stay resilient
-  }
 }
 
 async function findConflictingBooking(roomId: string, checkInDate: Date, checkOutDate: Date, excludeId?: string) {
@@ -410,7 +398,7 @@ export async function createPetHotelBooking(input: z.infer<typeof petHotelBookin
   }
 
   const customer = await prisma.customer.findFirst({ where: { id: pet.customerId }, select: { userId: true } });
-  await notifyPetHotelChange(customer?.userId, 'Reservasi pet hotel dibuat', `Reservasi pet hotel untuk ${pet.name} berhasil dibuat.`);
+  await notifyUser(customer?.userId, 'Reservasi pet hotel dibuat', `Reservasi pet hotel untuk ${pet.name} berhasil dibuat.`, 'pet-hotel');
 
   revalidatePath('/portal/pet-hotel');
   revalidatePath('/pet-hotel');
@@ -597,7 +585,7 @@ export async function checkInPetHotelBooking(id: string) {
 
   await syncRoomStatus(roomId);
   const customer = await prisma.customer.findFirst({ where: { id: booking.pet.customerId }, select: { userId: true } });
-  await notifyPetHotelChange(customer?.userId, 'Check-in pet hotel', `Status reservasi ${booking.id} telah berubah menjadi check-in.`);
+  await notifyUser(customer?.userId, 'Check-in pet hotel', `Status reservasi ${booking.id} telah berubah menjadi check-in.`, 'pet-hotel');
   revalidatePath('/pet-hotel');
   return { success: true, booking: updated };
 }
@@ -656,7 +644,7 @@ export async function checkOutPetHotelBooking(id: string) {
   }
 
   const customer = await prisma.customer.findFirst({ where: { id: booking.pet.customerId }, select: { userId: true } });
-  await notifyPetHotelChange(customer?.userId, 'Check-out pet hotel', `Reservasi pet hotel untuk ${booking.pet.name} telah selesai.`);
+  await notifyUser(customer?.userId, 'Check-out pet hotel', `Reservasi pet hotel untuk ${booking.pet.name} telah selesai.`, 'pet-hotel');
 
   await createInvoice({
     customerId: booking.pet.customerId,
@@ -666,6 +654,7 @@ export async function checkOutPetHotelBooking(id: string) {
       description: `Penginapan ${booking.pet.name}`,
       qty: invoiceDays,
       price: booking.room?.pricePerNight ?? HOTEL_DAILY_RATE,
+      petHotelBookingId: booking.id,
     }],
     notes: `Penginapan pet hotel untuk ${booking.pet.name}`,
   });

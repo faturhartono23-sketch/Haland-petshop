@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -21,6 +21,32 @@ export async function createAuditLog(userId: string, action: string, entity: str
     });
   } catch {
     // Audit log failures should not block operations
+  }
+}
+
+export async function getOrCreateGuestCustomer() {
+  const guestName = 'Pelanggan Umum (Walk-in)';
+  const existingGuest = await prisma.customer.findFirst({ where: { isGuest: true } });
+  if (existingGuest) {
+    return existingGuest;
+  }
+
+  try {
+    return await prisma.customer.create({
+      data: {
+        name: guestName,
+        userId: null,
+        isGuest: true,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const retryGuest = await prisma.customer.findFirst({ where: { isGuest: true } });
+      if (retryGuest) {
+        return retryGuest;
+      }
+    }
+    throw error;
   }
 }
 

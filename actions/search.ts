@@ -81,7 +81,9 @@ export async function searchGlobal(input: z.infer<typeof searchSchema>) {
 
   const [customers, pets, appointments, medicalRecords] = await Promise.all([
     prisma.customer.findMany({
-      where: isDoctor(actorRole) ? { AND: [customerFilter, baseWhere] } : customerFilter,
+      where: isDoctor(actorRole)
+        ? { AND: [{ isGuest: false }, customerFilter, baseWhere] }
+        : { AND: [{ isGuest: false }, customerFilter] },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, phone: true },
       take: 5,

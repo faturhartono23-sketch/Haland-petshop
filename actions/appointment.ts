@@ -2,10 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createNotification } from '@/actions/notification';
 import { auth } from '@/lib/auth';
 import { prisma, getCustomerForSession } from '@/lib/db';
 import { getActorRole, getActorId } from '@/lib/utils';
+import { notifyUser } from '@/lib/notifications-helper';
 
 const appointmentSchema = z.object({
   petId: z.string().min(1, 'Pilih hewan terlebih dahulu.'),
@@ -31,18 +31,6 @@ const updateAppointmentSchema = z.object({
 const cancelAppointmentSchema = z.object({
   id: z.string().min(1),
 });
-
-async function notifyAppointmentChange(userId: string | null | undefined, title: string, message: string) {
-  if (!userId) {
-    return;
-  }
-
-  try {
-    await createNotification({ userId, title, message, type: 'appointment' });
-  } catch {
-    // ignore notification errors so the appointment workflow remains resilient
-  }
-}
 
 async function validateAppointmentTime(date: Date) {
   const appointmentDate = new Date(date);
@@ -77,6 +65,29 @@ async function findDoctorConflict(doctorId: string | null | undefined, date: Dat
   });
 }
 
+function isValidStatusTransition(current: 'WAITING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED', next: 'WAITING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED') {
+  const transitions: Record<typeof current, Array<typeof current>> = {
+    WAITING: ['IN_PROGRESS', 'CANCELLED'],
+    IN_PROGRESS: ['DONE', 'CANCELLED'],
+    DONE: [],
+    CANCELLED: [],
+  };
+
+  if (current === next) {
+    return { ok: true };
+  }
+
+  if (transitions[current].includes(next)) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    message: `Transisi status dari ${current} ke ${next} tidak valid. ` +
+      `Status hanya dapat berubah dari ${current} ke ${transitions[current].join(' atau ') || 'tidak ada status lain'}.`,
+  };
+}
+
 export async function listAppointmentLookups() {
   const session = await auth();
   const actorRole = getActorRole(session);
@@ -95,7 +106,7 @@ export async function listAppointmentLookups() {
 
   const customersQuery = actorRole === 'CUSTOMER'
     ? prisma.customer.findMany({ where: { userId: actorId }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
-    : prisma.customer.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } });
+    : prisma.customer.findMany({ where: { isGuest: false }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
 
   const [pets, customers, doctors] = await Promise.all([
     petsQuery,
@@ -219,7 +230,7 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
       },
     });
 
-    await notifyAppointmentChange(actorId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`);
+    await notifyUser(actorId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`, 'appointment');
 
     revalidatePath('/portal/appointments');
     revalidatePath('/appointments');
@@ -262,7 +273,7 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
   });
 
   const customerUser = await prisma.customer.findUnique({ where: { id: parsed.data.customerId }, select: { userId: true } });
-  await notifyAppointmentChange(customerUser?.userId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`);
+  await notifyUser(customerUser?.userId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`, 'appointment');
 
   revalidatePath('/appointments');
   revalidatePath('/dashboard');
@@ -302,6 +313,13 @@ export async function updateAppointment(input: z.infer<typeof updateAppointmentS
       return { success: false, message: 'Status tidak valid.' };
     }
 
+    if (parsed.data.status) {
+      const transition = isValidStatusTransition(existing.status, parsed.data.status);
+      if (!transition.ok) {
+        return { success: false, message: transition.message };
+      }
+    }
+
     const appointment = await prisma.appointment.update({
       where: { id: parsed.data.id },
       data: { status: parsed.data.status ?? existing.status },
@@ -309,7 +327,7 @@ export async function updateAppointment(input: z.infer<typeof updateAppointmentS
 
     const customerUser = await prisma.customer.findUnique({ where: { id: existing.customerId }, select: { userId: true } });
     const petRecord = await prisma.pet.findUnique({ where: { id: existing.petId }, select: { name: true } });
-    await notifyAppointmentChange(customerUser?.userId, 'Status jadwal diperbarui', `Status jadwal untuk ${petRecord?.name ?? 'hewan Anda'} telah diperbarui.`);
+    await notifyUser(customerUser?.userId, 'Status jadwal diperbarui', `Status jadwal untuk ${petRecord?.name ?? 'hewan Anda'} telah diperbarui.`, 'appointment');
 
     revalidatePath('/appointments');
     revalidatePath('/dashboard');
@@ -345,7 +363,7 @@ export async function updateAppointment(input: z.infer<typeof updateAppointmentS
 
   const customerUser = await prisma.customer.findUnique({ where: { id: appointment.customerId }, select: { userId: true } });
   const petRecord = await prisma.pet.findUnique({ where: { id: appointment.petId }, select: { name: true } });
-  await notifyAppointmentChange(customerUser?.userId, 'Jadwal diperbarui', `Jadwal pemeriksaan untuk ${petRecord?.name ?? 'hewan Anda'} telah diperbarui.`);
+  await notifyUser(customerUser?.userId, 'Jadwal diperbarui', `Jadwal pemeriksaan untuk ${petRecord?.name ?? 'hewan Anda'} telah diperbarui.`, 'appointment');
 
   revalidatePath('/appointments');
   revalidatePath('/dashboard');
@@ -396,7 +414,7 @@ export async function cancelAppointment(input: z.infer<typeof cancelAppointmentS
 
   const customerUser = await prisma.customer.findUnique({ where: { id: existing.customerId }, select: { userId: true } });
   const petRecord = await prisma.pet.findUnique({ where: { id: existing.petId }, select: { name: true } });
-  await notifyAppointmentChange(customerUser?.userId, 'Jadwal dibatalkan', `Jadwal pemeriksaan untuk ${petRecord?.name ?? 'hewan Anda'} dibatalkan.`);
+  await notifyUser(customerUser?.userId, 'Jadwal dibatalkan', `Jadwal pemeriksaan untuk ${petRecord?.name ?? 'hewan Anda'} dibatalkan.`, 'appointment');
 
   revalidatePath('/appointments');
   revalidatePath('/portal/appointments');

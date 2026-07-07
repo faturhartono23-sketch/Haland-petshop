@@ -79,6 +79,7 @@ export async function listCustomers() {
   }
 
   const customers = await prisma.customer.findMany({
+    where: { isGuest: false },
     orderBy: { name: 'asc' },
     include: {
       user: { select: { id: true, username: true, role: true, isActive: true } },

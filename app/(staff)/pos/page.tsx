@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ArrowRight, Banknote, CheckCircle2, Printer, Search, ShoppingBag } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { createPosSale, searchProducts } from '@/actions/pos';
+import { createPosSale, listPosProducts, listProductCategories } from '@/actions/pos';
 import { getInvoiceLookups } from '@/actions/invoice';
 import { calculatePosTotals } from '@/lib/pos';
 import { usePolling } from '@/hooks/use-polling';
@@ -18,6 +18,7 @@ type ProductRow = {
   sellPrice: number;
   stock: number;
   categoryName: string | null;
+  imageUrl: string | null;
 };
 
 type CartItem = {
@@ -30,12 +31,20 @@ type CartItem = {
 
 type CustomerOption = { id: string; name: string };
 
+type CategoryChip = { id: string; name: string; activeProductCount: number };
+
 export default function PosPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [categories, setCategories] = useState<CategoryChip[]>([]);
+  const [activeCategoryId, setActiveCategoryId] = useState('');
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const skipRef = useRef(0);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerId, setCustomerId] = useState('');
+  const [isWalkIn, setIsWalkIn] = useState(false);
   const [discountAmount, setDiscountAmount] = useState('0');
   const [paymentAmount, setPaymentAmount] = useState('0');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'NON_CASH'>('CASH');
@@ -50,21 +59,72 @@ export default function PosPage() {
     }
   }, []);
 
+  const loadCategories = useCallback(async () => {
+    const result = await listProductCategories();
+    if (result.success) {
+      setCategories(result.categories ?? []);
+    } else {
+      toast.error(result.message ?? 'Gagal memuat kategori produk.');
+    }
+  }, []);
+
+  const loadProducts = useCallback(async (append = false) => {
+    if (!append) {
+      skipRef.current = 0;
+    }
+    setLoadingProducts(true);
+
+    const result = await listPosProducts({
+      categoryId: activeCategoryId || undefined,
+      query: searchQuery.trim() || undefined,
+      skip: append ? skipRef.current : 0,
+      take: 24,
+    });
+
+    setLoadingProducts(false);
+
+    if (!result.success) {
+      if (!append) {
+        setProducts([]);
+      }
+      setHasMoreProducts(false);
+      toast.error(result.message ?? 'Gagal memuat produk.');
+      return;
+    }
+
+    const fetchedProducts = result.products ?? [];
+    if (append) {
+      setProducts((current) => [...current, ...fetchedProducts]);
+      skipRef.current += fetchedProducts.length;
+    } else {
+      setProducts(fetchedProducts);
+      skipRef.current = fetchedProducts.length;
+    }
+
+    setHasMoreProducts(fetchedProducts.length === 24);
+  }, [activeCategoryId, searchQuery]);
+
+  const loadMoreProducts = useCallback(async () => {
+    if (!hasMoreProducts || loadingProducts) return;
+    await loadProducts(true);
+  }, [hasMoreProducts, loadingProducts, loadProducts]);
+
   useEffect(() => {
     void loadCustomers();
-  }, [loadCustomers]);
+    void loadCategories();
+  }, [loadCustomers, loadCategories]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadProducts(false);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [activeCategoryId, searchQuery, loadProducts]);
 
   async function handleSearch(event: React.FormEvent) {
     event.preventDefault();
-    if (!searchQuery.trim()) return;
-
-    const result = await searchProducts({ query: searchQuery });
-    if (result.success) {
-      setProducts(result.products ?? []);
-      return;
-    }
-    setProducts([]);
-    toast.error(result.message ?? 'Pencarian gagal.');
+    await loadProducts(false);
   }
 
   function addToCart(product: ProductRow) {
@@ -107,8 +167,8 @@ export default function PosPage() {
 
   async function handleCheckout(event: React.FormEvent) {
     event.preventDefault();
-    if (!customerId) {
-      toast.error('Pilih pelanggan terlebih dahulu.');
+    if (!customerId && !isWalkIn) {
+      toast.error('Pilih pelanggan terlebih dahulu atau aktifkan Jual Tanpa Pelanggan.');
       return;
     }
     if (cart.length === 0) {
@@ -122,7 +182,8 @@ export default function PosPage() {
 
     setSubmitting(true);
     const result = await createPosSale({
-      customerId,
+      customerId: isWalkIn ? '' : customerId,
+      isWalkIn,
       items: cart.map((item) => ({
         productId: item.productId,
         qty: item.qty,
@@ -199,46 +260,88 @@ export default function PosPage() {
             </label>
           </form>
 
-          <div className="mt-6 overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
-              <thead className="bg-zinc-50 text-left text-zinc-600">
-                <tr>
-                  <th className="px-4 py-3">Nama</th>
-                  <th className="px-4 py-3">Kategori</th>
-                  <th className="px-4 py-3">Harga</th>
-                  <th className="px-4 py-3">Stok</th>
-                  <th className="px-4 py-3">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 bg-white">
-                {products.map((product) => (
-                  <tr key={product.id} className="hover:bg-zinc-50">
-                    <td className="px-4 py-3">{product.name}</td>
-                    <td className="px-4 py-3">{product.categoryName ?? '-'}</td>
-                    <td className="px-4 py-3">{formatCurrency(product.sellPrice)}</td>
-                    <td className="px-4 py-3">{product.stock}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => addToCart(product)}
-                        className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={product.stock <= 0}
-                      >
-                        Tambah
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {products.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-zinc-500">
-                      Hasil pencarian akan muncul di sini.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+              <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveCategoryId('')}
+              className={`rounded-full border px-3 py-2 text-sm ${activeCategoryId === '' ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-zinc-200 bg-white text-zinc-700'}`}
+            >
+              Semua
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setActiveCategoryId(category.id)}
+                className={`rounded-full border px-3 py-2 text-sm ${activeCategoryId === category.id ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-zinc-200 bg-white text-zinc-700'}`}
+              >
+                {category.name} ({category.activeProductCount})
+              </button>
+            ))}
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {loadingProducts && products.length === 0 ? (
+              Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
+                  <div className="mb-4 h-40 rounded-3xl bg-zinc-100" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-3/4 rounded bg-zinc-200" />
+                    <div className="h-4 w-1/2 rounded bg-zinc-200" />
+                    <div className="h-4 w-1/4 rounded bg-zinc-200" />
+                  </div>
+                </div>
+              ))
+            ) : products.length === 0 ? (
+              <div className="rounded-3xl border border-zinc-200 bg-white p-10 text-center text-sm text-zinc-500">
+                Produk akan muncul di sini.
+              </div>
+            ) : (
+              products.map((product) => (
+                <div key={product.id} className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => addToCart(product)}
+                    className="flex h-full w-full flex-col items-start justify-between p-4 text-left"
+                  >
+                    <div className="mb-4 h-44 w-full overflow-hidden rounded-3xl bg-zinc-100">
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-zinc-400">No Image</div>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-900">{product.name}</h3>
+                        <p className="text-xs text-zinc-500">{product.categoryName ?? 'Tanpa kategori'}</p>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 text-sm text-zinc-700">
+                        <span>{formatCurrency(product.sellPrice)}</span>
+                        <span className="rounded-full border border-zinc-200 px-2 py-1 text-xs text-zinc-500">Stok {product.stock}</span>
+                      </div>
+                      <div className="rounded-3xl bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-white">
+                        Tambah ke keranjang
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {hasMoreProducts ? (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={loadMoreProducts}
+                disabled={loadingProducts}
+                className="rounded-full border border-zinc-900 bg-white px-5 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingProducts ? 'Memuat...' : 'Muat lebih banyak'}
+              </button>
+            </div>
+          ) : null}
         </section>
 
         <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -248,15 +351,36 @@ export default function PosPage() {
           </div>
 
           <div className="mt-4 space-y-4">
-            <label className="block text-sm text-zinc-600">
-              Pelanggan
-              <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
-                <option value="">Pilih pelanggan</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>{customer.name}</option>
-                ))}
-              </select>
-            </label>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <label className="block text-sm text-zinc-600">
+                Pelanggan
+                <select
+                  value={customerId}
+                  onChange={(event) => setCustomerId(event.target.value)}
+                  disabled={isWalkIn}
+                  className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 disabled:cursor-not-allowed disabled:bg-zinc-100"
+                >
+                  <option value="">Pilih pelanggan</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-600">
+                <input
+                  type="checkbox"
+                  checked={isWalkIn}
+                  onChange={(event) => {
+                    setIsWalkIn(event.target.checked);
+                    if (event.target.checked) {
+                      setCustomerId('');
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-zinc-300 text-zinc-900"
+                />
+                Jual Tanpa Pelanggan
+              </label>
+            </div>
 
             <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-50 p-3">
               <table className="min-w-full text-sm">

@@ -130,7 +130,7 @@ function applySearch(rows: Array<Record<string, unknown>>, query: string) {
 async function getFilterOptions(actorRole?: string) {
   const [doctors, customers, pets, rooms, categories] = await Promise.all([
     prisma.user.findMany({ where: { role: 'DOKTER' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-    prisma.customer.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.customer.findMany({ where: { isGuest: false }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.pet.findMany({ select: { id: true, name: true, species: true }, orderBy: { name: 'asc' } }),
     prisma.petHotelRoom.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.productCategory.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -409,6 +409,7 @@ export async function getReportData(input: ReportFilters) {
       case 'customers': {
         const customers = await prisma.customer.findMany({
           where: {
+            isGuest: false,
             ...(filters.search ? { name: { contains: filters.search, mode: 'insensitive' } } : {}),
           },
           include: { pets: true, invoices: true },
