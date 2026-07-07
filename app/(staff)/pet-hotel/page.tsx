@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { DoorOpen, CalendarDays, NotebookPen, Search } from 'lucide-react';
+import { DoorOpen, CalendarDays, NotebookPen, Plus, Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { cancelPetHotelBooking, checkInPetHotelBooking, checkOutPetHotelBooking, createPetHotelBooking, createPetHotelLog, createPetHotelRoom, deletePetHotelRoom, listPetHotelBookings, listPetHotelLogs, listPetHotelPets, listPetHotelRooms, updatePetHotelRoom } from '@/actions/pet-hotel';
 import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
+import { FormDialog } from '@/components/shared/form-dialog';
 import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type RoomRow = {
@@ -45,6 +46,8 @@ export default function PetHotelPage() {
   const [pets, setPets] = useState<PetOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [showRoomForm, setShowRoomForm] = useState(false);
+  const [showBookingForm, setShowBookingForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [roomForm, setRoomForm] = useState({ name: '', roomNumber: '', roomType: 'STANDARD', pricePerNight: '100000', capacity: '1', status: 'AVAILABLE', cleaningStatus: 'CLEAN', maintenanceStatus: 'OPERATIONAL' });
   const [bookingForm, setBookingForm] = useState({ petId: '', roomId: '', checkInDate: '', checkOutDate: '', notes: '' });
@@ -225,6 +228,7 @@ export default function PetHotelPage() {
       cleaningStatus: room.cleaningStatus ?? 'CLEAN',
       maintenanceStatus: room.maintenanceStatus ?? 'OPERATIONAL',
     });
+    setShowRoomForm(true);
   }
 
   async function handleDeleteRoom(roomId: string) {
@@ -236,6 +240,26 @@ export default function PetHotelPage() {
     } else {
       setMessage(result.message ?? 'Gagal menghapus kamar.');
     }
+  }
+
+  function openCreateRoom() {
+    setEditingId(null);
+    setRoomForm({ name: '', roomNumber: '', roomType: 'STANDARD', pricePerNight: '100000', capacity: '1', status: 'AVAILABLE', cleaningStatus: 'CLEAN', maintenanceStatus: 'OPERATIONAL' });
+    setShowRoomForm(true);
+  }
+
+  function closeRoomForm() {
+    setShowRoomForm(false);
+    setEditingId(null);
+  }
+
+  function openCreateBooking() {
+    setBookingForm({ petId: '', roomId: '', checkInDate: '', checkOutDate: '', notes: '' });
+    setShowBookingForm(true);
+  }
+
+  function closeBookingForm() {
+    setShowBookingForm(false);
   }
 
   const roomColumns: Array<{ key: keyof RoomRow; header: string; render?: (row: RoomRow) => ReactNode }> = [
@@ -281,105 +305,33 @@ export default function PetHotelPage() {
 
       {message ? <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">{message}</div> : null}
 
-      <div className="flex gap-2 border-b border-zinc-200">
-        <button onClick={() => setTab('rooms')} className={`px-4 py-2 font-medium ${tab === 'rooms' ? 'border-b-2 border-zinc-900 text-zinc-900' : 'text-zinc-600'}`}>
-          Kamar
-        </button>
-        <button onClick={() => setTab('bookings')} className={`px-4 py-2 font-medium ${tab === 'bookings' ? 'border-b-2 border-zinc-900 text-zinc-900' : 'text-zinc-600'}`}>
-          Reservasi
-        </button>
+      <div className="flex flex-col gap-4 border-b border-zinc-200 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex gap-2">
+          <button onClick={() => setTab('rooms')} className={`rounded-lg px-4 py-2 text-sm font-medium ${tab === 'rooms' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-700'}`}>
+            Kamar
+          </button>
+          <button onClick={() => setTab('bookings')} className={`rounded-lg px-4 py-2 text-sm font-medium ${tab === 'bookings' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-700'}`}>
+            Reservasi
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={openCreateRoom} className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+            <Plus className="h-4 w-4" /> Tambah Kamar
+          </button>
+          <button type="button" onClick={openCreateBooking} className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+            <Plus className="h-4 w-4" /> Buat Reservasi
+          </button>
+        </div>
       </div>
 
       {tab === 'rooms' ? (
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-6">
           <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
             {loading ? <div className="text-sm text-zinc-500">Memuat kamar...</div> : rooms.length === 0 ? <EmptyState title="Belum ada kamar" description="Tambah kamar untuk memulai." /> : <DataTable title="Daftar kamar" columns={roomColumns} rows={rooms} emptyMessage="Belum ada kamar." />}
           </div>
-
-          <form onSubmit={handleRoomSubmit} className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-zinc-900">
-              <DoorOpen className="h-4 w-4" />
-              <h2 className="text-base font-semibold">{editingId ? 'Edit kamar' : 'Tambah kamar'}</h2>
-            </div>
-
-            <label className="block text-sm text-zinc-600">
-              Nama Kamar
-              <input type="text" value={roomForm.name} onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm text-zinc-600">
-                Nomor Kamar
-                <input type="text" value={roomForm.roomNumber} onChange={(e) => setRoomForm({ ...roomForm, roomNumber: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-              </label>
-              <label className="block text-sm text-zinc-600">
-                Tipe
-                <input type="text" value={roomForm.roomType} onChange={(e) => setRoomForm({ ...roomForm, roomType: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-              </label>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm text-zinc-600">
-                Harga per malam (Rp)
-                <input type="number" min="0" value={roomForm.pricePerNight} onChange={(e) => setRoomForm({ ...roomForm, pricePerNight: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-              </label>
-              <label className="block text-sm text-zinc-600">
-                Kapasitas
-                <input type="number" min="1" max="10" value={roomForm.capacity} onChange={(e) => setRoomForm({ ...roomForm, capacity: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-              </label>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm text-zinc-600">
-                Kapasitas
-                <input type="number" min="1" max="10" value={roomForm.capacity} onChange={(e) => setRoomForm({ ...roomForm, capacity: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-              </label>
-              <label className="block text-sm text-zinc-600">
-                Status
-                <select value={roomForm.status} onChange={(e) => setRoomForm({ ...roomForm, status: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
-                  <option value="AVAILABLE">AVAILABLE</option>
-                  <option value="RESERVED">RESERVED</option>
-                  <option value="OCCUPIED">OCCUPIED</option>
-                  <option value="MAINTENANCE">MAINTENANCE</option>
-                  <option value="INACTIVE">INACTIVE</option>
-                </select>
-              </label>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm text-zinc-600">
-                Kebersihan
-                <select value={roomForm.cleaningStatus} onChange={(e) => setRoomForm({ ...roomForm, cleaningStatus: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
-                  <option value="CLEAN">CLEAN</option>
-                  <option value="DIRTY">DIRTY</option>
-                  <option value="INSPECTION">INSPECTION</option>
-                </select>
-              </label>
-              <label className="block text-sm text-zinc-600">
-                Perawatan
-                <select value={roomForm.maintenanceStatus} onChange={(e) => setRoomForm({ ...roomForm, maintenanceStatus: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
-                  <option value="OPERATIONAL">OPERATIONAL</option>
-                  <option value="NEEDS_REPAIR">NEEDS_REPAIR</option>
-                  <option value="OUT_OF_SERVICE">OUT_OF_SERVICE</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-                {editingId ? 'Simpan perubahan' : 'Tambah kamar'}
-              </button>
-              {editingId ? (
-                <>
-                  <button type="button" onClick={() => { setEditingId(null); setRoomForm({ name: '', roomNumber: '', roomType: 'STANDARD', pricePerNight: '100000', capacity: '1', status: 'AVAILABLE', cleaningStatus: 'CLEAN', maintenanceStatus: 'OPERATIONAL' }); }} className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700">
-                    Batal
-                  </button>
-                  <button type="button" onClick={() => { if (window.confirm('Hapus kamar ini?')) void handleDeleteRoom(editingId); }} className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-600">
-                    Hapus
-                  </button>
-                </>
-              ) : null}
-            </div>
-          </form>
         </div>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-6">
           <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-zinc-700">
@@ -394,44 +346,8 @@ export default function PetHotelPage() {
             {loading ? <div className="text-sm text-zinc-500">Memuat reservasi...</div> : filteredBookings.length === 0 ? <EmptyState title="Belum ada reservasi" description="Reservasi akan muncul setelah ditambahkan." /> : <DataTable title="Daftar reservasi" columns={bookingColumns} rows={filteredBookings} emptyMessage="Belum ada reservasi." />}
           </div>
 
-          <div className="space-y-6">
-            <form onSubmit={handleBookingSubmit} className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-2 text-zinc-900">
-                <CalendarDays className="h-4 w-4" />
-                <h2 className="text-base font-semibold">Buat reservasi</h2>
-              </div>
-              <label className="block text-sm text-zinc-600">
-                Hewan
-                <select value={bookingForm.petId} onChange={(e) => setBookingForm({ ...bookingForm, petId: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
-                  <option value="">Pilih hewan</option>
-                  {pets.map((pet) => <option key={pet.id} value={pet.id}>{pet.name} — {pet.customer?.name ?? 'Tanpa pemilik'}</option>)}
-                </select>
-              </label>
-              <label className="block text-sm text-zinc-600">
-                Kamar (opsional)
-                <select value={bookingForm.roomId} onChange={(e) => setBookingForm({ ...bookingForm, roomId: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
-                  <option value="">Pilih kamar</option>
-                  {rooms.filter((room) => room.status !== 'MAINTENANCE').map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
-                </select>
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm text-zinc-600">
-                  Check-in
-                  <input type="date" value={bookingForm.checkInDate} onChange={(e) => setBookingForm({ ...bookingForm, checkInDate: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-                </label>
-                <label className="block text-sm text-zinc-600">
-                  Check-out
-                  <input type="date" value={bookingForm.checkOutDate} onChange={(e) => setBookingForm({ ...bookingForm, checkOutDate: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
-                </label>
-              </div>
-              <label className="block text-sm text-zinc-600">
-                Catatan
-                <textarea value={bookingForm.notes} onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" rows={3} />
-              </label>
-              <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Buat reservasi</button>
-            </form>
-
-            <form onSubmit={handleLogSubmit} className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <form onSubmit={handleLogSubmit} className="space-y-4">
               <div className="flex items-center gap-2 text-zinc-900">
                 <NotebookPen className="h-4 w-4" />
                 <h2 className="text-base font-semibold">Catatan harian</h2>
@@ -461,6 +377,138 @@ export default function PetHotelPage() {
           </div>
         </div>
       )}
+
+      <FormDialog
+        open={showRoomForm}
+        title={editingId ? 'Edit kamar' : 'Tambah kamar'}
+        description={editingId ? 'Perbarui detail kamar.' : 'Isi detail kamar baru.'}
+        onClose={closeRoomForm}
+      >
+        <form onSubmit={handleRoomSubmit} className="space-y-4">
+          <div className="flex items-center gap-2 text-zinc-900">
+            <DoorOpen className="h-4 w-4" />
+            <h2 className="text-base font-semibold">{editingId ? 'Edit kamar' : 'Tambah kamar'}</h2>
+          </div>
+
+          <label className="block text-sm text-zinc-600">
+            Nama Kamar
+            <input type="text" value={roomForm.name} onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-zinc-600">
+              Nomor Kamar
+              <input type="text" value={roomForm.roomNumber} onChange={(e) => setRoomForm({ ...roomForm, roomNumber: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
+            </label>
+            <label className="block text-sm text-zinc-600">
+              Tipe
+              <input type="text" value={roomForm.roomType} onChange={(e) => setRoomForm({ ...roomForm, roomType: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-zinc-600">
+              Harga per malam (Rp)
+              <input type="number" min="0" value={roomForm.pricePerNight} onChange={(e) => setRoomForm({ ...roomForm, pricePerNight: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
+            </label>
+            <label className="block text-sm text-zinc-600">
+              Kapasitas
+              <input type="number" min="1" max="10" value={roomForm.capacity} onChange={(e) => setRoomForm({ ...roomForm, capacity: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-zinc-600">
+              Status
+              <select value={roomForm.status} onChange={(e) => setRoomForm({ ...roomForm, status: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
+                <option value="AVAILABLE">AVAILABLE</option>
+                <option value="RESERVED">RESERVED</option>
+                <option value="OCCUPIED">OCCUPIED</option>
+                <option value="MAINTENANCE">MAINTENANCE</option>
+                <option value="INACTIVE">INACTIVE</option>
+              </select>
+            </label>
+            <label className="block text-sm text-zinc-600">
+              Kebersihan
+              <select value={roomForm.cleaningStatus} onChange={(e) => setRoomForm({ ...roomForm, cleaningStatus: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
+                <option value="CLEAN">CLEAN</option>
+                <option value="DIRTY">DIRTY</option>
+                <option value="INSPECTION">INSPECTION</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-zinc-600">
+              Perawatan
+              <select value={roomForm.maintenanceStatus} onChange={(e) => setRoomForm({ ...roomForm, maintenanceStatus: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
+                <option value="OPERATIONAL">OPERATIONAL</option>
+                <option value="NEEDS_REPAIR">NEEDS_REPAIR</option>
+                <option value="OUT_OF_SERVICE">OUT_OF_SERVICE</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">{editingId ? 'Simpan perubahan' : 'Tambah kamar'}</button>
+            <button type="button" onClick={closeRoomForm} className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700">Batal</button>
+            {editingId ? (
+              <button type="button" onClick={() => { if (window.confirm('Hapus kamar ini?')) void handleDeleteRoom(editingId); }} className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-600">Hapus</button>
+            ) : null}
+          </div>
+        </form>
+      </FormDialog>
+
+      <FormDialog
+        open={showBookingForm}
+        title="Buat reservasi"
+        description="Isi detail reservasi baru untuk pet hotel."
+        onClose={closeBookingForm}
+      >
+        <form onSubmit={handleBookingSubmit} className="space-y-4">
+          <div className="flex items-center gap-2 text-zinc-900">
+            <CalendarDays className="h-4 w-4" />
+            <h2 className="text-base font-semibold">Buat reservasi</h2>
+          </div>
+
+          <label className="block text-sm text-zinc-600">
+            Hewan
+            <select value={bookingForm.petId} onChange={(e) => setBookingForm({ ...bookingForm, petId: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
+              <option value="">Pilih hewan</option>
+              {pets.map((pet) => <option key={pet.id} value={pet.id}>{pet.name} — {pet.customer?.name ?? 'Tanpa pemilik'}</option>)}
+            </select>
+          </label>
+
+          <label className="block text-sm text-zinc-600">
+            Kamar (opsional)
+            <select value={bookingForm.roomId} onChange={(e) => setBookingForm({ ...bookingForm, roomId: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2">
+              <option value="">Pilih kamar</option>
+              {rooms.filter((room) => room.status !== 'MAINTENANCE').map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+            </select>
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-zinc-600">
+              Check-in
+              <input type="date" value={bookingForm.checkInDate} onChange={(e) => setBookingForm({ ...bookingForm, checkInDate: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
+            </label>
+            <label className="block text-sm text-zinc-600">
+              Check-out
+              <input type="date" value={bookingForm.checkOutDate} onChange={(e) => setBookingForm({ ...bookingForm, checkOutDate: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
+            </label>
+          </div>
+
+          <label className="block text-sm text-zinc-600">
+            Catatan
+            <textarea value={bookingForm.notes} onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" rows={3} />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Buat reservasi</button>
+            <button type="button" onClick={closeBookingForm} className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700">Batal</button>
+          </div>
+        </form>
+      </FormDialog>
     </div>
   );
 }

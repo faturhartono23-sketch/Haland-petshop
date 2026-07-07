@@ -98,7 +98,7 @@ export function NotificationBell() {
       </button>
 
       {isOpen ? (
-        <div className="absolute right-0 z-20 mt-2 w-80 rounded-xl border border-zinc-200 bg-white p-3 shadow-lg">
+        <div className="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-zinc-200 bg-white p-3 shadow-lg">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-zinc-900">Notifikasi</p>
             <div className="flex items-center gap-2">

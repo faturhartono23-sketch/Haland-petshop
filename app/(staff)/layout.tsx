@@ -25,7 +25,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
         <Sidebar role={role} />
         <div className="flex min-h-screen flex-1 flex-col">
-          <Navbar />
+          <Navbar role={role} />
           <main className="flex-1 px-4 py-4 sm:px-6 lg:px-8">{children}</main>
         </div>
       </div>

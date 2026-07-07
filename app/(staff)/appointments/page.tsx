@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { CalendarPlus, CheckCircle2, CircleSlash, PencilLine } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, CircleSlash, PencilLine, Plus } from 'lucide-react';
 import { cancelAppointment, createAppointment, listAppointmentLookups, listAppointments, updateAppointment } from '@/actions/appointment';
 import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
+import { FormDialog } from '@/components/shared/form-dialog';
 import { usePolling } from '@/hooks/use-polling';
 import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
@@ -35,6 +36,7 @@ export default function AppointmentsPage() {
   const [doctors, setDoctors] = useState<LookupOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ petId: '', customerId: '', doctorId: '', date: '', queueNumber: '', status: 'WAITING' as 'WAITING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED' });
 
@@ -76,6 +78,16 @@ export default function AppointmentsPage() {
     setForm({ petId: '', customerId: '', doctorId: '', date: '', queueNumber: '', status: 'WAITING' });
   }
 
+  function openCreate() {
+    resetForm();
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    resetForm();
+  }
+
   function startEdit(appointment: AppointmentRow) {
     setEditingId(appointment.id);
     setForm({
@@ -86,6 +98,7 @@ export default function AppointmentsPage() {
       queueNumber: appointment.queueNumber ? String(appointment.queueNumber) : '',
       status: appointment.status as 'WAITING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED',
     });
+    setShowForm(true);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -114,7 +127,7 @@ export default function AppointmentsPage() {
 
     if (result.success) {
       toast.success(editingId ? 'Jadwal diperbarui.' : 'Jadwal ditambahkan.');
-      resetForm();
+      closeForm();
       await loadData();
       return;
     }
@@ -167,16 +180,28 @@ export default function AppointmentsPage() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <p className="text-sm text-zinc-500">Modul Appointment</p>
-        <h1 className="text-xl font-semibold text-zinc-900">Kelola jadwal pemeriksaan</h1>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-zinc-500">Modul Appointment</p>
+            <h1 className="text-xl font-semibold text-zinc-900">Kelola jadwal pemeriksaan</h1>
+          </div>
+          <button type="button" onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+            <Plus className="h-4 w-4" /> Tambah Jadwal
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-          {loading ? <div className="text-sm text-zinc-500">Memuat jadwal...</div> : appointments.length === 0 ? <EmptyState title="Belum ada jadwal" description="Tambah jadwal pemeriksaan untuk memulai." /> : <DataTable title="Daftar jadwal" columns={columns} rows={appointments} emptyMessage="Belum ada jadwal." />}
-        </div>
+      <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+        {loading ? <div className="text-sm text-zinc-500">Memuat jadwal...</div> : appointments.length === 0 ? <EmptyState title="Belum ada jadwal" description="Tambah jadwal pemeriksaan untuk memulai." /> : <DataTable title="Daftar jadwal" columns={columns} rows={appointments} emptyMessage="Belum ada jadwal." />}
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+      <FormDialog
+        open={showForm}
+        title={editingId ? 'Ubah jadwal' : 'Tambah jadwal'}
+        description={editingId ? 'Perbarui jadwal pemeriksaan.' : 'Isi detail jadwal baru.'}
+        onClose={closeForm}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex items-center gap-2 text-zinc-900">
             <CalendarPlus className="h-4 w-4" />
             <h2 className="text-base font-semibold">{editingId ? 'Ubah jadwal' : 'Tambah jadwal'}</h2>
@@ -261,7 +286,7 @@ export default function AppointmentsPage() {
             {editingId ? <button type="button" onClick={resetForm} className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700">Batal</button> : null}
           </div>
         </form>
-      </div>
+      </FormDialog>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-zinc-900">Aksi cepat</h2>

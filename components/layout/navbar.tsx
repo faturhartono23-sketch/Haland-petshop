@@ -1,13 +1,21 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { LogOut, Search as SearchIcon } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { NotificationBell } from './notification-bell';
 import { searchGlobal } from '@/actions/search';
+import { isStaffRole } from '@/lib/permissions';
 
-export function Navbar() {
+type NavbarProps = {
+  role?: string;
+};
+
+export function Navbar(props: NavbarProps) {
+  const { role: roleProp } = props;
   const { data: session } = useSession();
+  const role = roleProp ?? (session?.user as { role?: string } | undefined)?.role;
   const userName = session?.user?.name ?? 'Pengguna';
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Array<{ category: string; items: Array<{ id: string; title: string; subtitle: string; href: string }> }> | null>(null);
@@ -42,6 +50,8 @@ export function Navbar() {
     setIsSearching(false);
   }
 
+  const showSearch = Boolean(role && isStaffRole(role));
+
   return (
     <header className="border-b border-zinc-200 bg-white/90 px-4 py-4 backdrop-blur sm:px-6 lg:px-8">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -51,25 +61,33 @@ export function Navbar() {
         </div>
 
         <div className="flex flex-1 items-center gap-3">
-          <form onSubmit={handleSearch} className="flex flex-1 items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-2 shadow-sm sm:max-w-xl">
-            <SearchIcon className="h-4 w-4 text-zinc-500" />
-            <input
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                if (!event.target.value.trim()) {
-                  setResults([]);
-                  setMessage('');
-                }
-              }}
-              placeholder="Pencarian global..."
-              className="w-full bg-transparent text-sm outline-none"
-              aria-label="Kata kunci pencarian"
-            />
-            <button type="submit" disabled={isSearching} className="rounded-full bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60" aria-busy={isSearching}>
-              {isSearching ? 'Mencari...' : 'Cari'}
-            </button>
-          </form>
+          {showSearch ? (
+            <form onSubmit={handleSearch} className="flex flex-1 items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-2 shadow-sm sm:max-w-xl">
+              <SearchIcon className="h-4 w-4 text-zinc-500" />
+              <input
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  if (!event.target.value.trim()) {
+                    setResults([]);
+                    setMessage('');
+                  }
+                }}
+                placeholder="Pencarian global..."
+                className="w-full bg-transparent text-sm outline-none"
+                aria-label="Kata kunci pencarian"
+              />
+              <button type="submit" disabled={isSearching} className="rounded-full bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60" aria-busy={isSearching}>
+                {isSearching ? 'Mencari...' : 'Cari'}
+              </button>
+            </form>
+          ) : (
+            <div className="flex flex-1 items-center justify-end">
+              <Link href="/portal/appointments" className="inline-flex items-center rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+                Buat Janji Temu
+              </Link>
+            </div>
+          )}
           <NotificationBell />
           <button
             type="button"

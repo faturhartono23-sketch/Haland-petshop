@@ -23,8 +23,8 @@ export default async function CustomerLayout({ children }: { children: React.Rea
   return (
     <div className="min-h-screen bg-[#fafafa] text-zinc-900">
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col">
-        <Navbar />
-        <main className="flex-1 px-4 pb-24 pt-2 sm:px-6">{children}</main>
+        <Navbar role={role} />
+        <main className="flex-1 px-4 pb-24 pt-2 sm:px-6 sm:pb-8">{children}</main>
         <PortalNav />
       </div>
     </div>
