@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { createInvoice } from '@/actions/invoice';
 import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
-import { isStaffRole } from '@/lib/permissions';
+import { canPerformAction, isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, normalizeOptionalText } from '@/lib/utils';
 import { generateBookingNumber } from '@/lib/numbering';
 import { notifyUser } from '@/lib/notifications-helper';
@@ -44,6 +44,11 @@ const petHotelLogSchema = z.object({
   photo: z.string().trim().optional().or(z.literal('')),
 });
 
+const extendPetHotelBookingSchema = z.object({
+  id: z.string().trim().min(1, 'Reservasi tidak valid.'),
+  newCheckOutDate: z.string().trim().min(1, 'Tanggal check-out baru wajib diisi.'),
+});
+
 const HOTEL_DAILY_RATE = 100000;
 
 type RoomStatus = 'AVAILABLE' | 'RESERVED' | 'OCCUPIED' | 'MAINTENANCE' | 'INACTIVE';
@@ -57,6 +62,24 @@ function getStartOfDay(date: Date) {
 function getDayCount(checkInDate: Date, checkOutDate: Date) {
   const diff = checkOutDate.getTime() - checkInDate.getTime();
   return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
+function getBookingStayDays(booking: { checkInDate: Date; checkOutDate: Date; actualCheckInAt: Date | null; actualCheckOutAt: Date | null }) {
+  const actualCheckIn = booking.actualCheckInAt ?? booking.checkInDate;
+  const actualCheckOut = booking.actualCheckOutAt ?? booking.checkOutDate;
+  return getDayCount(actualCheckIn, actualCheckOut);
+}
+
+function ensureStaffAccess(actorRole: string | undefined, action: 'create' | 'read' | 'update' | 'delete') {
+  if (!actorRole) {
+    return { allowed: false, message: 'Tidak terautentikasi.' };
+  }
+
+  if (canPerformAction(actorRole, 'pet-hotel', action)) {
+    return { allowed: true };
+  }
+
+  return { allowed: false, message: 'Anda tidak berwenang mengelola pet hotel.' };
 }
 
 async function generateBookingCode() {
@@ -175,8 +198,9 @@ export async function createPetHotelRoom(input: z.infer<typeof petHotelRoomSchem
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang membuat kamar.' };
+  const permission = ensureStaffAccess(actorRole, 'create');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const room = await prisma.petHotelRoom.create({
@@ -207,8 +231,9 @@ export async function updatePetHotelRoom(input: z.infer<typeof updatePetHotelRoo
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengubah kamar.' };
+  const permission = ensureStaffAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const roomData: Record<string, unknown> = {
@@ -340,7 +365,7 @@ export async function createPetHotelBooking(input: z.infer<typeof petHotelBookin
     if (!customer || pet.customerId !== customer.id) {
       return { success: false, message: 'Hewan yang dipilih tidak milik Anda.' };
     }
-  } else if (!isStaffRole(actorRole)) {
+  } else if (!canPerformAction(actorRole, 'pet-hotel', 'create')) {
     return { success: false, message: 'Anda tidak berwenang membuat reservasi.' };
   }
 
@@ -431,7 +456,7 @@ export async function cancelPetHotelBooking(id: string) {
     if (booking.status !== 'BOOKED') {
       return { success: false, message: 'Hanya reservasi yang belum check-in yang bisa dibatalkan.' };
     }
-  } else if (!isStaffRole(actorRole)) {
+  } else if (!canPerformAction(actorRole, 'pet-hotel', 'create')) {
     return { success: false, message: 'Anda tidak berwenang membatalkan reservasi.' };
   }
 
@@ -472,8 +497,9 @@ export async function deletePetHotelBooking(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang menghapus reservasi.' };
+  const permission = ensureStaffAccess(actorRole, 'delete');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const booking = await prisma.petHotelBooking.findUnique({ where: { id } });
@@ -512,8 +538,9 @@ export async function checkInPetHotelBooking(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang melakukan check-in.' };
+  const permission = ensureStaffAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const booking = await prisma.petHotelBooking.findUnique({
@@ -562,7 +589,7 @@ export async function checkInPetHotelBooking(id: string) {
   const updated = await prisma.$transaction(async (tx) => {
     const checkedIn = await tx.petHotelBooking.update({
       where: { id },
-      data: { roomId, status: 'CHECKED_IN' },
+      data: { roomId, status: 'CHECKED_IN', actualCheckInAt: new Date() },
     });
 
     await tx.petHotelRoom.update({
@@ -595,8 +622,9 @@ export async function checkOutPetHotelBooking(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang melakukan check-out.' };
+  const permission = ensureStaffAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const booking = await prisma.petHotelBooking.findUnique({
@@ -612,11 +640,16 @@ export async function checkOutPetHotelBooking(id: string) {
     return { success: false, message: 'Reservasi ini belum check-in.' };
   }
 
-  const invoiceDays = getDayCount(booking.checkInDate, booking.checkOutDate);
+  const invoiceDays = getBookingStayDays({
+    checkInDate: booking.checkInDate,
+    checkOutDate: booking.checkOutDate,
+    actualCheckInAt: (booking as typeof booking & { actualCheckInAt: Date | null }).actualCheckInAt ?? null,
+    actualCheckOutAt: (booking as typeof booking & { actualCheckOutAt: Date | null }).actualCheckOutAt ?? null,
+  });
   const updated = await prisma.$transaction(async (tx) => {
     const checkedOut = await tx.petHotelBooking.update({
       where: { id },
-      data: { status: 'CHECKED_OUT' },
+      data: { status: 'CHECKED_OUT', actualCheckOutAt: new Date() },
     });
 
     if (booking.roomId) {
@@ -664,6 +697,54 @@ export async function checkOutPetHotelBooking(id: string) {
 }
 
 // PET HOTEL LOGS
+export async function extendPetHotelBooking(input: z.infer<typeof extendPetHotelBookingSchema>) {
+  const session = await auth();
+  const actorRole = getActorRole(session);
+  const actorId = getActorId(session);
+  const parsed = extendPetHotelBookingSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return { success: false, message: 'Data perpanjangan tidak valid.' };
+  }
+
+  const permission = ensureStaffAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
+  }
+
+  const booking = await prisma.petHotelBooking.findUnique({ where: { id: parsed.data.id } });
+  if (!booking) {
+    return { success: false, message: 'Reservasi tidak ditemukan.' };
+  }
+
+  const newCheckOutDate = new Date(`${parsed.data.newCheckOutDate}T00:00:00`);
+  if (Number.isNaN(newCheckOutDate.getTime()) || newCheckOutDate <= booking.checkInDate) {
+    return { success: false, message: 'Tanggal check-out baru tidak valid.' };
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const extended = await tx.petHotelBooking.update({
+      where: { id: parsed.data.id },
+      data: { checkOutDate: newCheckOutDate, notes: normalizeOptionalText(`${booking.notes ?? ''}\nPerpanjangan sampai ${newCheckOutDate.toISOString().slice(0, 10)}`.trim()) },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'UPDATE',
+        entity: 'PetHotelBooking',
+        entityId: extended.id,
+        description: `Memperpanjang reservasi sampai ${newCheckOutDate.toISOString().slice(0, 10)}`,
+      },
+    });
+
+    return extended;
+  });
+
+  revalidatePath('/pet-hotel');
+  return { success: true, booking: updated };
+}
+
 export async function createPetHotelLog(input: z.infer<typeof petHotelLogSchema>) {
   const session = await auth();
   const actorRole = getActorRole(session);
@@ -674,8 +755,9 @@ export async function createPetHotelLog(input: z.infer<typeof petHotelLogSchema>
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang membuat log.' };
+  const permission = ensureStaffAccess(actorRole, 'create');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const booking = await prisma.petHotelBooking.findUnique({ where: { id: parsed.data.bookingId } });

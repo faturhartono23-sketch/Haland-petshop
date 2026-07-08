@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma, getCustomerForSession } from '@/lib/db';
+import { canPerformAction } from '@/lib/permissions';
 import { getActorRole } from '@/lib/utils';
 
 const petSchema = z.object({
@@ -25,12 +26,12 @@ const deletePetSchema = z.object({
   id: z.string().min(1),
 });
 
-async function ensureAccess(actorRole: string | undefined) {
+async function ensureAccess(actorRole: string | undefined, action: 'create' | 'read' | 'update' | 'delete') {
   if (!actorRole) {
     return { allowed: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole === 'OWNER' || actorRole === 'ADMIN_KLINIK' || actorRole === 'DOKTER') {
+  if (canPerformAction(actorRole, 'pets', action)) {
     return { allowed: true };
   }
 

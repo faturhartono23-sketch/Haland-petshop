@@ -104,6 +104,17 @@ export default function PetsPage() {
     setShowForm(true);
   }
 
+  function handlePhotoSelection(file: File | null, setter: (value: string) => void) {
+    if (!file) {
+      setter('');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setter(typeof reader.result === 'string' ? reader.result : '');
+    reader.readAsDataURL(file);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -297,7 +308,8 @@ export default function PetsPage() {
           </div>
           <div>
             <label htmlFor="pet-photo" className="text-sm font-medium text-zinc-700">Foto</label>
-            <input id="pet-photo" value={form.photo} onChange={(event) => setForm((current) => ({ ...current, photo: event.target.value }))} className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none" placeholder="URL foto (opsional)" />
+            <input id="pet-photo" type="file" accept="image/*" onChange={(event) => handlePhotoSelection(event.target.files?.[0] ?? null, (value) => setForm((current) => ({ ...current, photo: value })))} className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none" />
+            <p className="mt-1 text-xs text-zinc-500">Unggah foto dari perangkat Anda. File akan disimpan dalam bentuk data gambar.</p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100">Batal</button>

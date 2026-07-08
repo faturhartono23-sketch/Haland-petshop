@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
-import { isStaffRole } from '@/lib/permissions';
+import { canPerformAction, isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, roundCurrency, normalizeOptionalText } from '@/lib/utils';
 import { generateInvoiceNumber } from '@/lib/numbering';
 import { deductProductStock, restoreProductStock, validateStockAvailability } from '@/lib/inventory-helpers';
@@ -134,7 +134,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     return { success: false, message: 'Data invoice tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'billing', 'create')) {
     return { success: false, message: 'Anda tidak berwenang membuat invoice.' };
   }
 
@@ -352,6 +352,17 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
         }
       }
 
+      for (const item of invoiceItems.filter((invoiceItem) => invoiceItem.type === 'PRODUK' && invoiceItem.productId)) {
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId as string,
+            type: 'OUT',
+            quantity: item.qty,
+            note: `Penjualan invoice ${invoiceNumber}`,
+          },
+        });
+      }
+
       return createdInvoice;
     });
   } catch (error) {
@@ -380,7 +391,7 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
     return { success: false, message: 'Data pembayaran tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'billing', 'update')) {
     return { success: false, message: 'Anda tidak berwenang mencatat pembayaran.' };
   }
 
@@ -449,7 +460,7 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'billing', 'delete')) {
     return { success: false, message: 'Anda tidak berwenang membatalkan invoice.' };
   }
 

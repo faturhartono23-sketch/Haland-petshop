@@ -24,16 +24,18 @@ async function generatePrefixedNumber(prefixKey: 'invoicePrefix' | 'medicalRecor
   );
 
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(1000 + Math.random() * 9000);
-  const candidate = `${prefix}-${today}-${random}`;
 
-  const existing = await findExistingNumber(entity, candidate);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const random = Math.floor(1000 + Math.random() * 9000);
+    const candidate = `${prefix}-${today}-${random}`;
+    const existing = await findExistingNumber(entity, candidate);
 
-  if (!existing) {
-    return candidate;
+    if (!existing) {
+      return candidate;
+    }
   }
 
-  return generatePrefixedNumber(prefixKey, fallback, entity);
+  throw new Error(`Gagal menghasilkan nomor unik untuk ${entity}.`);
 }
 
 export async function generateInvoiceNumber() {

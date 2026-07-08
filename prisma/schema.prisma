@@ -250,6 +250,8 @@ model PetHotelBooking {
   roomId              String?
   checkInDate         DateTime
   checkOutDate        DateTime
+  actualCheckInAt     DateTime?
+  actualCheckOutAt    DateTime?
   status              PetHotelBookingStatus @default(BOOKED)
   requestedByCustomer Boolean               @default(false)
   notes               String?

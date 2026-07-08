@@ -52,7 +52,7 @@ export default function PetHotelPage() {
   const [roomForm, setRoomForm] = useState({ name: '', roomNumber: '', roomType: 'STANDARD', pricePerNight: '100000', capacity: '1', status: 'AVAILABLE', cleaningStatus: 'CLEAN', maintenanceStatus: 'OPERATIONAL' });
   const [bookingForm, setBookingForm] = useState({ petId: '', roomId: '', checkInDate: '', checkOutDate: '', notes: '' });
   const [selectedBookingId, setSelectedBookingId] = useState<string>('');
-  const [logForm, setLogForm] = useState({ type: 'NOTE' as 'FEEDING' | 'MEDICINE' | 'NOTE', description: '' });
+  const [logForm, setLogForm] = useState({ type: 'NOTE' as 'FEEDING' | 'MEDICINE' | 'NOTE', description: '', photo: '' });
   const [logs, setLogs] = useState<any[]>([]);
   const [search, setSearch] = useState('');
 
@@ -198,11 +198,11 @@ export default function PetHotelPage() {
       return;
     }
 
-    const result = await createPetHotelLog({ bookingId: selectedBookingId, type: logForm.type, description: logForm.description });
+    const result = await createPetHotelLog({ bookingId: selectedBookingId, type: logForm.type, description: logForm.description, photo: logForm.photo });
 
     if (result.success) {
       setMessage('Catatan disimpan.');
-      setLogForm({ type: 'NOTE', description: '' });
+      setLogForm({ type: 'NOTE', description: '', photo: '' });
       await loadLogs(selectedBookingId);
       return;
     }
@@ -370,6 +370,19 @@ export default function PetHotelPage() {
               <label className="block text-sm text-zinc-600">
                 Catatan
                 <textarea value={logForm.description} onChange={(e) => setLogForm({ ...logForm, description: e.target.value })} required className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" rows={3} />
+              </label>
+              <label className="block text-sm text-zinc-600">
+                Foto (opsional)
+                <input type="file" accept="image/*" onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  if (!file) {
+                    setLogForm((current) => ({ ...current, photo: '' }));
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => setLogForm((current) => ({ ...current, photo: typeof reader.result === 'string' ? reader.result : '' }));
+                  reader.readAsDataURL(file);
+                }} className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2" />
               </label>
               <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Simpan catatan</button>
               {logs.length > 0 ? <div className="space-y-2 rounded-lg border border-zinc-200 p-3 text-sm text-zinc-700">{logs.map((log) => <div key={log.id} className="rounded-lg bg-zinc-50 p-2"><p className="font-medium">{log.type}</p><p>{log.description}</p></div>)} </div> : null}

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { isStaffRole } from '@/lib/permissions';
+import { canPerformAction, isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, normalizeOptionalText } from '@/lib/utils';
 
 export type ParsedProductRow = {
@@ -93,6 +93,18 @@ const updateSupplierSchema = supplierSchema.extend({
 
 
 
+function ensureAccess(actorRole: string | undefined, action: 'create' | 'read' | 'update' | 'delete') {
+  if (!actorRole) {
+    return { allowed: false, message: 'Tidak terautentikasi.' };
+  }
+
+  if (canPerformAction(actorRole, 'petshop', action)) {
+    return { allowed: true };
+  }
+
+  return { allowed: false, message: 'Anda tidak berwenang mengelola data petshop.' };
+}
+
 async function validateProductUniqueness(sku: string | null, barcode: string | null, excludeId?: string) {
   if (!sku && !barcode) return null;
 
@@ -141,8 +153,9 @@ export async function createProductCategory(input: z.infer<typeof categorySchema
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang membuat kategori.' };
+  const permission = ensureAccess(actorRole, 'create');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const category = await prisma.productCategory.create({
@@ -163,8 +176,9 @@ export async function updateProductCategory(input: z.infer<typeof updateCategory
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengubah kategori.' };
+  const permission = ensureAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const category = await prisma.productCategory.update({
@@ -181,8 +195,9 @@ export async function deleteProductCategory(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || actorRole !== 'OWNER') {
-    return { success: false, message: 'Hanya Owner yang dapat menghapus kategori.' };
+  const permission = ensureAccess(actorRole, 'delete');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const productCount = await prisma.product.count({ where: { categoryId: id } });
@@ -202,8 +217,9 @@ export async function listSuppliers() {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
+  const permission = ensureAccess(actorRole, 'read');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const suppliers = await prisma.supplier.findMany({
@@ -223,8 +239,9 @@ export async function createSupplier(input: z.infer<typeof supplierSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang membuat supplier.' };
+  const permission = ensureAccess(actorRole, 'create');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const supplier = await prisma.supplier.create({
@@ -245,8 +262,9 @@ export async function updateSupplier(input: z.infer<typeof updateSupplierSchema>
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengubah supplier.' };
+  const permission = ensureAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const supplier = await prisma.supplier.update({
@@ -263,8 +281,9 @@ export async function deleteSupplier(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || actorRole !== 'OWNER') {
-    return { success: false, message: 'Hanya Owner yang dapat menghapus supplier.' };
+  const permission = ensureAccess(actorRole, 'delete');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const productCount = await prisma.product.count({ where: { supplierId: id } });
@@ -284,8 +303,9 @@ export async function listProducts(includeArchived = false) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang melihat data ini.' };
+  const permission = ensureAccess(actorRole, 'read');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const products = await prisma.product.findMany({
@@ -307,8 +327,9 @@ export async function createProduct(input: z.infer<typeof productSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang membuat produk.' };
+  const permission = ensureAccess(actorRole, 'create');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   if (parsed.data.sellPrice < Math.max(parsed.data.buyPrice, parsed.data.costPrice ?? 0)) {
@@ -373,8 +394,9 @@ export async function updateProduct(input: z.infer<typeof updateProductSchema>) 
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengubah produk.' };
+  const permission = ensureAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   if (parsed.data.sellPrice < Math.max(parsed.data.buyPrice, parsed.data.costPrice ?? 0)) {
@@ -434,8 +456,9 @@ export async function exportProductsToCsv() {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengekspor produk.' };
+  const permission = ensureAccess(actorRole, 'read');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const products = await prisma.product.findMany({
@@ -471,8 +494,9 @@ export async function importProductsFromCsv(rows: ParsedProductRow[]) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengimpor produk.' };
+  const permission = ensureAccess(actorRole, 'create');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   if (actorRole === 'DOKTER') {
@@ -609,8 +633,9 @@ export async function archiveProduct(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengarsipkan produk.' };
+  const permission = ensureAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const product = await prisma.$transaction(async (tx) => {
@@ -642,8 +667,9 @@ export async function restoreProduct(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
-    return { success: false, message: 'Anda tidak berwenang mengembalikan produk.' };
+  const permission = ensureAccess(actorRole, 'update');
+  if (!actorId || !permission.allowed) {
+    return { success: false, message: permission.message };
   }
 
   const product = await prisma.$transaction(async (tx) => {

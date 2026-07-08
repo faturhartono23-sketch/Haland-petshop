@@ -37,6 +37,12 @@ test('DOKTER can only read most modules and create/update medical records', () =
   assert.equal(canPerformAction('DOKTER', 'appointments', 'create'), false);
   assert.equal(canPerformAction('DOKTER', 'pets', 'read'), true);
   assert.equal(canPerformAction('DOKTER', 'pets', 'create'), false);
+  assert.equal(canPerformAction('DOKTER', 'pet-hotel', 'read'), true);
+  assert.equal(canPerformAction('DOKTER', 'pet-hotel', 'create'), false);
+  assert.equal(canPerformAction('DOKTER', 'petshop', 'create'), false);
+  assert.equal(canPerformAction('DOKTER', 'pos', 'create'), false);
+  assert.equal(canPerformAction('DOKTER', 'billing', 'create'), false);
+  assert.equal(canPerformAction('DOKTER', 'customers', 'update'), false);
 });
 
 test('CUSTOMER has minimal access and cannot manage other modules', () => {

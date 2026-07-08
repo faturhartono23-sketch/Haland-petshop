@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { isStaffRole } from '@/lib/permissions';
+import { canPerformAction } from '@/lib/permissions';
 import { getActorRole, getActorId } from '@/lib/utils';
 
 const procedureSchema = z.object({
@@ -22,7 +22,7 @@ export async function listProcedures() {
   const session = await auth();
   const actorRole = getActorRole(session);
 
-  if (!actorRole || !isStaffRole(actorRole)) {
+  if (!canPerformAction(actorRole, 'procedures', 'read')) {
     return { success: false, message: 'Anda tidak berwenang melihat prosedur.' };
   }
 
@@ -43,7 +43,7 @@ export async function createProcedure(input: z.infer<typeof procedureSchema>) {
     return { success: false, message: 'Data prosedur tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'procedures', 'create')) {
     return { success: false, message: 'Anda tidak berwenang membuat prosedur.' };
   }
 
@@ -80,7 +80,7 @@ export async function updateProcedure(input: z.infer<typeof updateProcedureSchem
     return { success: false, message: 'Data prosedur tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'procedures', 'update')) {
     return { success: false, message: 'Anda tidak berwenang mengubah prosedur.' };
   }
 
@@ -113,7 +113,7 @@ export async function deleteProcedure(id: string) {
   const actorRole = getActorRole(session);
   const actorId = getActorId(session);
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'procedures', 'delete')) {
     return { success: false, message: 'Anda tidak berwenang menghapus prosedur.' };
   }
 

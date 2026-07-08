@@ -114,6 +114,18 @@ export function canPerformAction(role: string | undefined, module: ModuleName, a
       return ['read', 'update'].includes(action);
     }
 
+    if (module === 'customers' || module === 'pets') {
+      return action === 'read';
+    }
+
+    if (module === 'pet-hotel' || module === 'reports' || module === 'profile') {
+      return action === 'read';
+    }
+
+    if (module === 'petshop' || module === 'pos' || module === 'billing' || module === 'procedures') {
+      return false;
+    }
+
     return action === 'read';
   }
 

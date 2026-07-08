@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma, getOrCreateGuestCustomer } from '@/lib/db';
-import { isStaffRole } from '@/lib/permissions';
+import { canPerformAction, isStaffRole } from '@/lib/permissions';
 import { notifyUser } from '@/lib/notifications-helper';
 import { calculatePosTotals, getPaymentStatus, roundCurrency } from '@/lib/pos';
 import { getActorRole } from '@/lib/utils';
@@ -75,7 +75,7 @@ export async function listPosProducts(input: z.infer<typeof listPosProductsSchem
     return { success: false, message: 'Data produk tidak valid.' };
   }
 
-  if (!isStaffRole(actorRole)) {
+  if (!canPerformAction(actorRole, 'pos', 'read')) {
     return { success: false, message: 'Anda tidak berwenang mencari produk.' };
   }
 
@@ -126,7 +126,7 @@ export async function listProductCategories() {
   const session = await auth();
   const actorRole = getActorRole(session);
 
-  if (!isStaffRole(actorRole)) {
+  if (!canPerformAction(actorRole, 'pos', 'read')) {
     return { success: false, message: 'Anda tidak berwenang mengakses kategori produk.' };
   }
 
@@ -158,7 +158,7 @@ export async function searchProducts(input: z.infer<typeof productSearchSchema>)
     return { success: false, message: 'Query pencarian tidak valid.' };
   }
 
-  if (!isStaffRole(actorRole)) {
+  if (!canPerformAction(actorRole, 'pos', 'read')) {
     return { success: false, message: 'Anda tidak berwenang mencari produk.' };
   }
 
@@ -176,7 +176,7 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
     return { success: false, message: 'Data transaksi tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'pos', 'create')) {
     return { success: false, message: 'Anda tidak berwenang melakukan penjualan POS.' };
   }
 
@@ -352,7 +352,7 @@ export async function getPosTransactionHistory(input: z.infer<typeof getPosTrans
     return { success: false, message: 'Parameter riwayat transaksi tidak valid.' };
   }
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'pos', 'read')) {
     return { success: false, message: 'Anda tidak berwenang melihat riwayat transaksi.' };
   }
 
@@ -440,7 +440,7 @@ export async function getPosTransactionDetail(invoiceId: string) {
   const actorRole = getActorRole(session);
   const actorId = session?.user?.id;
 
-  if (!actorId || !isStaffRole(actorRole)) {
+  if (!actorId || !canPerformAction(actorRole, 'pos', 'read')) {
     return { success: false, message: 'Anda tidak berwenang melihat detail transaksi.' };
   }
 

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { createUser } from '@/lib/user-management';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { canAccessModule, isStaffRole } from '@/lib/permissions';
+import { canPerformAction } from '@/lib/permissions';
 import { getActorRole } from '@/lib/utils';
 
 const customerSchema = z.object({
@@ -25,12 +25,12 @@ const deleteCustomerSchema = z.object({
   id: z.string().min(1),
 });
 
-function ensureStaffAccess(actorRole: string | undefined) {
+function ensureStaffAccess(actorRole: string | undefined, action: 'create' | 'read' | 'update' | 'delete') {
   if (!actorRole) {
     return { allowed: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (isStaffRole(actorRole) && canAccessModule(actorRole, 'customers')) {
+  if (canPerformAction(actorRole, 'customers', action)) {
     return { allowed: true };
   }
 
