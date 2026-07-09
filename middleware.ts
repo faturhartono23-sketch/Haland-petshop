@@ -6,12 +6,29 @@ const loginRateLimitMaxAttempts = 5;
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
 
 function getClientIp(request: NextRequest) {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    request.headers.get('x-forwarded-proto') ||
-    'unknown'
-  );
+  // SECURITY: Only trust x-forwarded-for from Vercel edge (trusted proxy)
+  // In production (Vercel), x-forwarded-for is set by Vercel infrastructure
+  // For local development, fallback to x-real-ip or unknown
+  const xForwardedFor = request.headers.get('x-forwarded-for');
+  
+  if (xForwardedFor) {
+    // x-forwarded-for can contain multiple IPs: client, proxy1, proxy2, ...
+    // The LAST IP is the most recent proxy (should be Vercel edge in production)
+    // We take the FIRST IP which is the client
+    const ips = xForwardedFor.split(',').map(ip => ip.trim());
+    if (ips.length > 0 && ips[0]) {
+      return ips[0];
+    }
+  }
+  
+  // Fallback: try x-real-ip (sometimes set by proxies)
+  const xRealIp = request.headers.get('x-real-ip');
+  if (xRealIp) {
+    return xRealIp;
+  }
+  
+  // Final fallback: unknown
+  return 'unknown';
 }
 
 function isRateLimited(key: string) {

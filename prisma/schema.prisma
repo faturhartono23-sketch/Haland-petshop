@@ -80,6 +80,13 @@ enum PaymentMethod {
   NON_CASH
 }
 
+enum MedicalRecordStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CLOSED
+}
+
 model User {
   id                String    @id @default(cuid())
   username          String    @unique
@@ -207,13 +214,13 @@ model Appointment {
 }
 
 model MedicalRecord {
-  id              String   @id @default(cuid())
-  recordNumber    String   @unique
-  appointmentId   String   @unique
+  id              String                 @id @default(cuid())
+  recordNumber    String                 @unique
+  appointmentId   String                 @unique
   customerId      String
   petId           String
   doctorId        String
-  date            DateTime @default(now())
+  date            DateTime               @default(now())
   chiefComplaint  String?
   history         String?
   physicalExam    String?
@@ -228,10 +235,10 @@ model MedicalRecord {
   labResult       String?
   notes           String?
   attachments     String?
-  status          String   @default("OPEN")
-  version         Int      @default(1)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status          MedicalRecordStatus    @default(OPEN)
+  version         Int                    @default(1)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   appointment Appointment @relation(fields: [appointmentId], references: [id])
   customer    Customer    @relation(fields: [customerId], references: [id])

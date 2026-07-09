@@ -62,6 +62,103 @@ async function getFreshUser(userId: string) {
   });
 }
 
+/**
+ * Shared PIN verification logic with lockout protection
+ * Used by both login and changePin to ensure consistent security
+ * 
+ * @param userId - User ID to verify PIN for
+ * @param submittedPin - PIN submitted by user
+ * @param userPinHash - Hash of user's stored PIN
+ * @param context - 'LOGIN' or 'CHANGE_PIN' for audit logging
+ * @returns { ok: true } if PIN is valid, { ok: false, message: string } otherwise
+ */
+export async function verifyPinWithLockout(
+  userId: string,
+  submittedPin: string,
+  userPinHash: string,
+  context: 'LOGIN' | 'CHANGE_PIN' = 'LOGIN',
+) {
+  const now = new Date();
+
+  // Get current user state
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      isLocked: true,
+      lockedUntil: true,
+      failedPinAttempts: true,
+    },
+  });
+
+  if (!user) {
+    return { ok: false, message: 'Pengguna tidak ditemukan.' };
+  }
+
+  // Check if account is locked
+  if (user.isLocked && user.lockedUntil && user.lockedUntil > now) {
+    await createAuditLog(userId, context, 'User', userId, `${context} ditolak: akun terkunci`);
+    return { ok: false, message: `Akun Anda terkunci karena terlalu banyak percobaan gagal. Coba lagi nanti.` };
+  }
+
+  // Unlock account if lockout period has passed
+  if (user.isLocked && user.lockedUntil && user.lockedUntil <= now) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isLocked: false,
+        lockedUntil: null,
+        failedPinAttempts: 0,
+      },
+    });
+  }
+
+  // Verify PIN
+  let isValidPin = false;
+  try {
+    isValidPin = await bcrypt.compare(submittedPin, userPinHash);
+  } catch {
+    await createAuditLog(userId, context, 'User', userId, `${context} gagal: kesalahan sistem`);
+    return { ok: false, message: 'Kesalahan saat memverifikasi PIN.' };
+  }
+
+  if (!isValidPin) {
+    // PIN is invalid - increment attempts and potentially lock account
+    const nextAttempts = (user.failedPinAttempts ?? 0) + 1;
+    const shouldLock = nextAttempts >= 5;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        failedPinAttempts: nextAttempts,
+        isLocked: shouldLock,
+        lockedUntil: shouldLock ? new Date(now.getTime() + 15 * 60 * 1000) : null,
+      },
+    });
+
+    await createAuditLog(userId, context, 'User', userId, `${context} gagal: PIN salah (percobaan ${nextAttempts}/5)`);
+    
+    if (shouldLock) {
+      return { ok: false, message: `PIN salah. Akun Anda telah terkunci karena 5 kali percobaan gagal. Silakan coba lagi dalam 15 menit.` };
+    }
+    
+    return { ok: false, message: `PIN salah. Percobaan ${nextAttempts} dari 5.` };
+  }
+
+  // PIN is valid - reset failed attempts
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      failedPinAttempts: 0,
+      isLocked: false,
+      lockedUntil: null,
+    },
+  });
+
+  await createAuditLog(userId, context, 'User', userId, `${context} berhasil: PIN verified`);
+  return { ok: true };
+}
+
 export const authOptions: NextAuthOptions = {
   secret: nextAuthSecret,
   session: {
@@ -104,56 +201,11 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-          const now = new Date();
-          if (user.isLocked) {
-            if (user.lockedUntil && user.lockedUntil > now) {
-              await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login ditolak karena akun terkunci');
-              return null;
-            }
-
-            await prisma.user.update({
-              where: { id: user.id },
-              data: {
-                isLocked: false,
-                lockedUntil: null,
-                failedPinAttempts: 0,
-              },
-            });
-          }
-
-          let isValidPin = false;
-          try {
-            isValidPin = await bcrypt.compare(parsed.data.pin, user.pinHash);
-          } catch {
-            await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login gagal karena kesalahan sistem');
+          // Use shared PIN verification logic with lockout protection
+          const pinVerification = await verifyPinWithLockout(user.id, parsed.data.pin, user.pinHash, 'LOGIN');
+          if (!pinVerification.ok) {
             return null;
           }
-
-          if (!isValidPin) {
-            const nextAttempts = (user.failedPinAttempts ?? 0) + 1;
-            const shouldLock = nextAttempts >= 5;
-
-            await prisma.user.update({
-              where: { id: user.id },
-              data: {
-                failedPinAttempts: nextAttempts,
-                isLocked: shouldLock,
-                lockedUntil: shouldLock ? new Date(now.getTime() + 15 * 60 * 1000) : null,
-              },
-            });
-
-            await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login gagal: PIN salah');
-            return null;
-          }
-
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              failedPinAttempts: 0,
-              isLocked: false,
-              lockedUntil: null,
-            },
-          });
 
           await createAuditLog(user.id, 'LOGIN', 'User', user.id, 'Login berhasil');
 

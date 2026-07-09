@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { verifyPinWithLockout } from '@/lib/auth';
 
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -125,9 +126,10 @@ export async function changePin(input: z.infer<typeof changePinSchema>) {
     return { success: false, message: 'PIN baru tidak boleh sama dengan PIN lama.', data: null };
   }
 
-  const isValid = await bcrypt.compare(parsed.data.currentPin, user.pinHash);
-  if (!isValid) {
-    return { success: false, message: 'PIN saat ini tidak sesuai.', data: null };
+  // Use shared PIN verification logic with lockout protection
+  const pinVerification = await verifyPinWithLockout(user.id, parsed.data.currentPin, user.pinHash, 'CHANGE_PIN');
+  if (!pinVerification.ok) {
+    return { success: false, message: pinVerification.message, data: null };
   }
 
   const newPinHash = await bcrypt.hash(parsed.data.newPin, 10);

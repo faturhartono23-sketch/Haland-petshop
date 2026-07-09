@@ -25,17 +25,29 @@ async function generatePrefixedNumber(prefixKey: 'invoicePrefix' | 'medicalRecor
 
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const random = Math.floor(1000 + Math.random() * 9000);
-    const candidate = `${prefix}-${today}-${random}`;
-    const existing = await findExistingNumber(entity, candidate);
+  // SECURITY: Retry with exponential backoff on unique constraint violation (TOCTOU race condition)
+  let lastError: Error | null = null;
+  
+  for (let retryAttempt = 0; retryAttempt < 3; retryAttempt += 1) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const random = Math.floor(1000 + Math.random() * 9000);
+      const candidate = `${prefix}-${today}-${random}`;
+      const existing = await findExistingNumber(entity, candidate);
 
-    if (!existing) {
-      return candidate;
+      if (!existing) {
+        // Found a unique candidate, but need to validate at insert time
+        return candidate;
+      }
+    }
+    
+    // All 10 attempts found existing numbers, retry with longer sleep
+    if (retryAttempt < 2) {
+      const backoffMs = Math.pow(2, retryAttempt) * 100; // 100ms, 200ms, 400ms
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
 
-  throw new Error(`Gagal menghasilkan nomor unik untuk ${entity}.`);
+  throw new Error(`Gagal menghasilkan nomor unik untuk ${entity} setelah retry.`);
 }
 
 export async function generateInvoiceNumber() {

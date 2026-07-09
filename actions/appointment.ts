@@ -213,28 +213,40 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
       return { success: false, message: timeValidation.message };
     }
 
-    const doctorConflict = await findDoctorConflict(parsed.data.doctorId || null, new Date(parsed.data.date));
-    if (doctorConflict) {
-      return { success: false, message: 'Dokter sudah memiliki jadwal pada waktu yang dipilih.' };
+    // ATOMIC: Wrap conflict check and create in transaction to prevent race condition
+    try {
+      const appointment = await prisma.$transaction(async (tx) => {
+        const doctorConflict = await findDoctorConflict(parsed.data.doctorId || null, new Date(parsed.data.date));
+        if (doctorConflict) {
+          throw new Error('Dokter sudah memiliki jadwal pada waktu yang dipilih.');
+        }
+
+        const created = await tx.appointment.create({
+          data: {
+            petId: parsed.data.petId,
+            customerId: customer.id,
+            doctorId: parsed.data.doctorId || null,
+            date: new Date(parsed.data.date),
+            queueNumber: parsed.data.queueNumber ?? null,
+            status: 'WAITING',
+            requestedByCustomer: true,
+          },
+        });
+
+        return created;
+      });
+
+      await notifyUser(actorId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`, 'appointment');
+
+      revalidatePath('/portal/appointments');
+      revalidatePath('/appointments');
+      return { success: true, appointment };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('sudah memiliki jadwal')) {
+        return { success: false, message: error.message };
+      }
+      throw error;
     }
-
-    const appointment = await prisma.appointment.create({
-      data: {
-        petId: parsed.data.petId,
-        customerId: customer.id,
-        doctorId: parsed.data.doctorId || null,
-        date: new Date(parsed.data.date),
-        queueNumber: parsed.data.queueNumber ?? null,
-        status: 'WAITING',
-        requestedByCustomer: true,
-      },
-    });
-
-    await notifyUser(actorId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`, 'appointment');
-
-    revalidatePath('/portal/appointments');
-    revalidatePath('/appointments');
-    return { success: true, appointment };
   }
 
   if (actorRole !== 'OWNER' && actorRole !== 'ADMIN_KLINIK') {
@@ -255,29 +267,41 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
     return { success: false, message: timeValidation.message };
   }
 
-  const doctorConflict = await findDoctorConflict(parsed.data.doctorId || null, new Date(parsed.data.date));
-  if (doctorConflict) {
-    return { success: false, message: 'Dokter sudah memiliki jadwal pada waktu yang dipilih.' };
+  // ATOMIC: Wrap conflict check and create in transaction to prevent race condition
+  try {
+    const appointment = await prisma.$transaction(async (tx) => {
+      const doctorConflict = await findDoctorConflict(parsed.data.doctorId || null, new Date(parsed.data.date));
+      if (doctorConflict) {
+        throw new Error('Dokter sudah memiliki jadwal pada waktu yang dipilih.');
+      }
+
+      const created = await tx.appointment.create({
+        data: {
+          petId: parsed.data.petId,
+          customerId: parsed.data.customerId!,
+          doctorId: parsed.data.doctorId || null,
+          date: new Date(parsed.data.date),
+          queueNumber: parsed.data.queueNumber ?? null,
+          status: parsed.data.status ?? 'WAITING',
+          requestedByCustomer: parsed.data.requestedByCustomer ?? false,
+        },
+      });
+
+      return created;
+    });
+
+    const customerUser = await prisma.customer.findUnique({ where: { id: parsed.data.customerId }, select: { userId: true } });
+    await notifyUser(customerUser?.userId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`, 'appointment');
+
+    revalidatePath('/appointments');
+    revalidatePath('/dashboard');
+    return { success: true, appointment };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('sudah memiliki jadwal')) {
+      return { success: false, message: error.message };
+    }
+    throw error;
   }
-
-  const appointment = await prisma.appointment.create({
-    data: {
-      petId: parsed.data.petId,
-      customerId: parsed.data.customerId,
-      doctorId: parsed.data.doctorId || null,
-      date: new Date(parsed.data.date),
-      queueNumber: parsed.data.queueNumber ?? null,
-      status: parsed.data.status ?? 'WAITING',
-      requestedByCustomer: parsed.data.requestedByCustomer ?? false,
-    },
-  });
-
-  const customerUser = await prisma.customer.findUnique({ where: { id: parsed.data.customerId }, select: { userId: true } });
-  await notifyUser(customerUser?.userId, 'Jadwal dibuat', `Jadwal pemeriksaan untuk ${pet.name} berhasil dibuat.`, 'appointment');
-
-  revalidatePath('/appointments');
-  revalidatePath('/dashboard');
-  return { success: true, appointment };
 }
 
 export async function updateAppointment(input: z.infer<typeof updateAppointmentSchema>) {

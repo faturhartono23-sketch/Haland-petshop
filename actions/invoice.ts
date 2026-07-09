@@ -138,6 +138,15 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     return { success: false, message: 'Anda tidak berwenang membuat invoice.' };
   }
 
+  // Validasi: hanya OWNER dan ADMIN_KLINIK yang boleh membuat invoice dengan item KONSULTASI atau OBAT
+  const hasManualPriceItems = parsed.data.items.some((item) => ['KONSULTASI', 'OBAT'].includes(item.type));
+  if (hasManualPriceItems && actorRole !== 'OWNER' && actorRole !== 'ADMIN_KLINIK') {
+    return {
+      success: false,
+      message: 'Hanya pemilik klinik atau admin klinik yang dapat membuat invoice dengan item Konsultasi atau Obat.',
+    };
+  }
+
   const customer = await prisma.customer.findUnique({ where: { id: parsed.data.customerId } });
   if (!customer) {
     return { success: false, message: 'Pelanggan tidak ditemukan.' };
@@ -198,7 +207,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     Promise.all(productIds.map((productId) => prisma.product.findUnique({ where: { id: productId } }))),
     Promise.all(procedureIds.map((procedureId) => prisma.procedure.findUnique({ where: { id: procedureId } }))),
     petHotelBookingIds.length > 0
-      ? prisma.petHotelBooking.findMany({ where: { id: { in: petHotelBookingIds } }, include: { pet: true } })
+      ? prisma.petHotelBooking.findMany({ where: { id: { in: petHotelBookingIds } }, include: { room: true } })
       : Promise.resolve([]),
   ]);
 
@@ -212,7 +221,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     if (pr) proceduresById.set(pr.id, pr);
   }
 
-  const bookingsById = new Map<string, typeof bookings[number]>();
+  const bookingsById = new Map<string, (typeof bookings)[number]>();
   for (const b of bookings) {
     bookingsById.set(b.id, b);
   }
@@ -262,6 +271,40 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
       };
     }
 
+    if (item.type === 'PET_HOTEL' && item.petHotelBookingId) {
+      const booking = bookingsById.get(item.petHotelBookingId);
+      if (!booking) {
+        throw new Error(`Booking pet hotel untuk item ${item.description} tidak ditemukan.`);
+      }
+
+      if (!booking.room) {
+        throw new Error(`Kamar pet hotel belum ditentukan untuk booking ini. Silakan tentukan kamar sebelum membuat invoice.`);
+      }
+
+      // Calculate nights: from checkInDate to checkOutDate, rounded up per day
+      const nights = Math.ceil((booking.checkOutDate.getTime() - booking.checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (nights <= 0) {
+        throw new Error(`Durasi menginap tidak valid untuk booking ini.`);
+      }
+
+      // Calculate price from room.pricePerNight * nights, IGNORE client-submitted price
+      const pricePerNight = roundCurrency(booking.room.pricePerNight);
+      const totalPrice = roundCurrency(pricePerNight * nights);
+
+      return {
+        type: item.type,
+        description: item.description || `${booking.room.name} (${nights} malam)`,
+        qty: 1, // Pet hotel bookings are not quantity-based
+        price: totalPrice,
+        subtotal: totalPrice,
+        productId: null,
+        procedureId: null,
+        petHotelBookingId: booking.id,
+      };
+    }
+
+    // For KONSULTASI, OBAT, and other types: use client-submitted price
+    // Note: In the future, KONSULTASI and OBAT should have validated prices or be restricted by role
     return {
       type: item.type,
       description: item.description,
@@ -297,79 +340,104 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
 
   let invoice;
 
-  try {
-    invoice = await prisma.$transaction(async (tx) => {
-      const createdInvoice = await tx.invoice.create({
-        data: {
-          customerId: parsed.data.customerId,
-          appointmentId: parsed.data.appointmentId || null,
-          medicalRecordId: parsed.data.medicalRecordId || null,
-          petId: parsed.data.petId || null,
-          doctorId: parsed.data.doctorId || null,
-          invoiceNumber,
-          status,
-          subtotal,
-          discountAmount,
-          taxRate,
-          taxAmount,
-          totalAmount,
-          notes: normalizeOptionalText(parsed.data.notes),
-          createdById: actorId,
-          items: {
-            create: invoiceItems.map((item) => ({
-              type: item.type,
-              description: item.description,
-              qty: item.qty,
-              price: item.price,
-              subtotal: item.subtotal,
-              productId: item.productId,
-              procedureId: item.procedureId,
-              petHotelBookingId: item.petHotelBookingId,
-            })),
-          },
-          ...(initialPaymentAmount > 0
-            ? {
-                payments: {
-                  create: {
-                    method: initialPaymentMethod,
-                    amount: initialPaymentAmount,
-                  },
-                },
-              }
-            : {}),
-        },
-        include: {
-          customer: true,
-          items: true,
-          payments: true,
-        },
-      });
+  // SECURITY: Retry on unique constraint violation (TOCTOU race condition for invoice number)
+  let lastError: Error | null = null;
+  for (let retryAttempt = 0; retryAttempt < 3; retryAttempt += 1) {
+    try {
+      invoice = await prisma.$transaction(async (tx) => {
+        // Generate invoice number for each attempt to handle race condition
+        const currentInvoiceNumber = retryAttempt === 0 ? invoiceNumber : await generateInvoiceNumber();
 
-      if (productStockDeductionItems.length > 0) {
-        const deductionResult = await deductProductStock(tx, productStockDeductionItems);
-        if (!deductionResult.ok) {
-          throw new Error('Stok produk berubah, transaksi dibatalkan.');
-        }
-      }
-
-      for (const item of invoiceItems.filter((invoiceItem) => invoiceItem.type === 'PRODUK' && invoiceItem.productId)) {
-        await tx.stockMovement.create({
+        const createdInvoice = await tx.invoice.create({
           data: {
-            productId: item.productId as string,
-            type: 'OUT',
-            quantity: item.qty,
-            note: `Penjualan invoice ${invoiceNumber}`,
+            customerId: parsed.data.customerId,
+            appointmentId: parsed.data.appointmentId || null,
+            medicalRecordId: parsed.data.medicalRecordId || null,
+            petId: parsed.data.petId || null,
+            doctorId: parsed.data.doctorId || null,
+            invoiceNumber: currentInvoiceNumber,
+            status,
+            subtotal,
+            discountAmount,
+            taxRate,
+            taxAmount,
+            totalAmount,
+            notes: normalizeOptionalText(parsed.data.notes),
+            createdById: actorId,
+            items: {
+              create: invoiceItems.map((item) => ({
+                type: item.type,
+                description: item.description,
+                qty: item.qty,
+                price: item.price,
+                subtotal: item.subtotal,
+                productId: item.productId,
+                procedureId: item.procedureId,
+                petHotelBookingId: item.petHotelBookingId,
+              })),
+            },
+            ...(initialPaymentAmount > 0
+              ? {
+                  payments: {
+                    create: {
+                      method: initialPaymentMethod,
+                      amount: initialPaymentAmount,
+                    },
+                  },
+                }
+              : {}),
+          },
+          include: {
+            customer: true,
+            items: true,
+            payments: true,
           },
         });
-      }
 
-      return createdInvoice;
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === 'Stok produk berubah, transaksi dibatalkan.') {
-      return { success: false, message: 'Stok produk berubah saat transaksi diproses, silakan coba lagi.' };
+        if (productStockDeductionItems.length > 0) {
+          const deductionResult = await deductProductStock(tx, productStockDeductionItems);
+          if (!deductionResult.ok) {
+            throw new Error('Stok produk berubah, transaksi dibatalkan.');
+          }
+        }
+
+        for (const item of invoiceItems.filter((invoiceItem) => invoiceItem.type === 'PRODUK' && invoiceItem.productId)) {
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId as string,
+              type: 'OUT',
+              quantity: item.qty,
+              note: `Penjualan invoice ${currentInvoiceNumber}`,
+            },
+          });
+        }
+
+        return createdInvoice;
+      });
+      break; // Success, exit retry loop
+    } catch (error) {
+      lastError = error as Error;
+      
+      if (error instanceof Error) {
+        if (error.message === 'Stok produk berubah, transaksi dibatalkan.') {
+          return { success: false, message: 'Stok produk berubah saat transaksi diproses, silakan coba lagi.' };
+        }
+        
+        // Check for unique constraint violation on invoiceNumber (P2002)
+        if (error.message.includes('Unique constraint failed') && error.message.includes('invoiceNumber')) {
+          if (retryAttempt < 2) {
+            // Retry with new invoice number
+            continue;
+          }
+        }
+      }
+      
+      throw error;
     }
-    throw error;
+  }
+
+  if (!invoice) {
+    throw lastError || new Error('Gagal membuat invoice setelah retry.');
   }
 
   await createAuditLog(actorId, 'CREATE', 'Invoice', invoice.id, `Membuat invoice ${invoice.invoiceNumber}`);
@@ -408,46 +476,55 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
     return { success: false, message: 'Invoice sudah lunas.' };
   }
 
-  const aggregate = await prisma.payment.aggregate({
-    _sum: { amount: true },
-    where: { invoiceId: parsed.data.invoiceId },
-  });
+  try {
+    const updatedInvoice = await prisma.$transaction(async (tx) => {
+      // ATOMIC: Check outstanding within transaction to prevent race condition
+      // This prevents two simultaneous payments from both succeeding and causing overpayment
+      const aggregate = await tx.payment.aggregate({
+        _sum: { amount: true },
+        where: { invoiceId: parsed.data.invoiceId },
+      });
 
-  const totalPaid = roundCurrency(aggregate._sum.amount ?? 0);
-  const outstanding = roundCurrency(invoice.totalAmount - totalPaid);
+      const totalPaid = roundCurrency(aggregate._sum.amount ?? 0);
+      const outstanding = roundCurrency(invoice.totalAmount - totalPaid);
 
-  if (parsed.data.amount > outstanding) {
-    return { success: false, message: 'Jumlah pembayaran melebihi sisa tagihan.' };
+      if (parsed.data.amount > outstanding) {
+        throw new Error('Jumlah pembayaran melebihi sisa tagihan.');
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          invoiceId: parsed.data.invoiceId,
+          method: parsed.data.method,
+          amount: roundCurrency(parsed.data.amount),
+        },
+      });
+
+      const nextPaid = roundCurrency(totalPaid + payment.amount);
+      const nextStatus = nextPaid >= invoice.totalAmount ? 'PAID' : 'PARTIAL_PAYMENT';
+
+      const updated = await tx.invoice.update({
+        where: { id: parsed.data.invoiceId },
+        data: { status: nextStatus },
+        include: { customer: true, items: true, payments: true },
+      });
+
+      return updated;
+    });
+
+    await createAuditLog(actorId, 'PAYMENT', 'Invoice', updatedInvoice.id, `Mencatat pembayaran invoice ${updatedInvoice.invoiceNumber}`);
+    await notifyUser(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Pembayaran tercatat', `Pembayaran untuk invoice ${updatedInvoice.invoiceNumber} telah diterima.`, 'invoice');
+    revalidatePath('/billing');
+    revalidatePath('/portal/invoices');
+    revalidatePath('/dashboard');
+
+    return { success: true, invoice: updatedInvoice };
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Jumlah pembayaran melebihi sisa tagihan.') {
+      return { success: false, message: 'Jumlah pembayaran melebihi sisa tagihan.' };
+    }
+    throw error;
   }
-
-  const updatedInvoice = await prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.create({
-      data: {
-        invoiceId: parsed.data.invoiceId,
-        method: parsed.data.method,
-        amount: roundCurrency(parsed.data.amount),
-      },
-    });
-
-    const nextPaid = roundCurrency(totalPaid + payment.amount);
-    const nextStatus = nextPaid >= invoice.totalAmount ? 'PAID' : 'PARTIAL_PAYMENT';
-
-    const updated = await tx.invoice.update({
-      where: { id: parsed.data.invoiceId },
-      data: { status: nextStatus },
-      include: { customer: true, items: true, payments: true },
-    });
-
-    return updated;
-  });
-
-  await createAuditLog(actorId, 'PAYMENT', 'Invoice', updatedInvoice.id, `Mencatat pembayaran invoice ${updatedInvoice.invoiceNumber}`);
-  await notifyUser(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Pembayaran tercatat', `Pembayaran untuk invoice ${updatedInvoice.invoiceNumber} telah diterima.`, 'invoice');
-  revalidatePath('/billing');
-  revalidatePath('/portal/invoices');
-  revalidatePath('/dashboard');
-
-  return { success: true, invoice: updatedInvoice };
 }
 
 export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) {
