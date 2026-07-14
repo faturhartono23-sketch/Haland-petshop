@@ -364,13 +364,14 @@ export async function getReportData(input: ReportFilters) {
       }
 
       case 'medical-records': {
+        const medicalRecordStatus = filters.status ? (filters.status as 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CLOSED') : undefined;
         const records = await prisma.medicalRecord.findMany({
           where: {
             ...(dateWhereMedical ?? {}),
             ...(filters.doctorId ? { doctorId: filters.doctorId } : {}),
             ...(filters.customerId ? { customerId: filters.customerId } : {}),
             ...(filters.petId ? { petId: filters.petId } : {}),
-            ...(filters.status ? { status: filters.status } : {}),
+            ...(medicalRecordStatus ? { status: medicalRecordStatus } : {}),
           },
           include: { pet: { select: { name: true } }, customer: { select: { name: true } }, doctor: { select: { name: true } } },
           orderBy: { date: 'desc' },

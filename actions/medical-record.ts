@@ -8,6 +8,7 @@ import { parseStructuredItems, serializeStructuredItems } from '@/lib/medical-re
 import { getActorRole, getActorId, normalizeOptionalText, normalizeOptionalNumber } from '@/lib/utils';
 import { generateMedicalRecordNumber } from '@/lib/numbering';
 import { notifyUser } from '@/lib/notifications-helper';
+import { canPerformAction } from '@/lib/permissions';
 
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = [
@@ -100,8 +101,8 @@ export async function getMedicalRecordAccess() {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  const canManage = role === 'OWNER' || role === 'DOKTER';
-  const canRead = Boolean(role);
+  const canManage = Boolean(role && canPerformAction(role, 'medical-records', 'create'));
+  const canRead = Boolean(role && canPerformAction(role, 'medical-records', 'read'));
 
   return {
     success: true,
@@ -192,8 +193,8 @@ export async function createMedicalRecord(input: z.infer<typeof medicalRecordSch
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole !== 'DOKTER' && actorRole !== 'OWNER') {
-    return { success: false, message: 'Hanya dokter atau pemilik klinik yang dapat membuat rekam medis.' };
+  if (!canPerformAction(actorRole, 'medical-records', 'create')) {
+    return { success: false, message: 'Anda tidak berwenang membuat rekam medis.' };
   }
 
   const appointment = await prisma.appointment.findUnique({
@@ -293,8 +294,8 @@ export async function updateMedicalRecord(input: z.infer<typeof updateMedicalRec
     return { success: false, message: 'Rekam medis tidak ditemukan.' };
   }
 
-  if (actorRole !== 'DOKTER' && actorRole !== 'OWNER') {
-    return { success: false, message: 'Hanya dokter atau pemilik klinik yang dapat mengubah rekam medis.' };
+  if (!canPerformAction(actorRole, 'medical-records', 'update')) {
+    return { success: false, message: 'Anda tidak berwenang mengubah rekam medis.' };
   }
 
   if (actorRole === 'DOKTER' && existing.doctorId !== actorId) {

@@ -145,7 +145,7 @@ export async function createPet(input: z.infer<typeof petSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  const permission = await ensureAccess(actorRole);
+  const permission = await ensureAccess(actorRole, 'create');
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -196,7 +196,7 @@ export async function updatePet(input: z.infer<typeof updatePetSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  const permission = await ensureAccess(actorRole);
+  const permission = await ensureAccess(actorRole, 'update');
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -253,7 +253,7 @@ export async function deletePet(input: z.infer<typeof deletePetSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  const permission = await ensureAccess(actorRole);
+  const permission = await ensureAccess(actorRole, 'delete');
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }

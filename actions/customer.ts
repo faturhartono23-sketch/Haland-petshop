@@ -124,7 +124,7 @@ export async function createCustomer(input: z.infer<typeof customerSchema>) {
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  const permission = await ensureStaffAccess(actorRole);
+  const permission = ensureStaffAccess(actorRole, 'create');
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -180,7 +180,7 @@ export async function updateCustomer(input: z.infer<typeof updateCustomerSchema>
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  const permission = await ensureStaffAccess(actorRole);
+  const permission = ensureStaffAccess(actorRole, 'update');
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }
@@ -221,7 +221,7 @@ export async function deleteCustomer(input: z.infer<typeof deleteCustomerSchema>
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  const permission = await ensureStaffAccess(actorRole);
+  const permission = ensureStaffAccess(actorRole, 'delete');
   if (!permission.allowed) {
     return { success: false, message: permission.message };
   }

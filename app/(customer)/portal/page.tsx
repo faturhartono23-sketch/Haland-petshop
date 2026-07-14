@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, ReceiptText, ScrollText, PawPrint, BellRing } from 'lucide-react';
+import { CalendarDays, ReceiptText, ScrollText, PawPrint, BellRing, BadgeCheck, Clock3 } from 'lucide-react';
 import { getPortalAppointmentSummary, listAppointments } from '@/actions/appointment';
 import { getPortalInvoiceSummary, getPortalInvoices } from '@/actions/invoice';
 import { getNotifications } from '@/actions/notification';
 import { listPets } from '@/actions/pet';
 import { listMedicalRecords } from '@/actions/medical-record';
 import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
+import { usePermissions } from '@/hooks/use-permissions';
 
 export default function PortalPage() {
   const [upcomingAppointments, setUpcomingAppointments] = useState<number | null>(null);
@@ -19,6 +20,7 @@ export default function PortalPage() {
   const [notificationList, setNotificationList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { isCustomer, canAccess } = usePermissions();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -84,8 +86,14 @@ export default function PortalPage() {
         <p className="text-sm text-zinc-500">Portal Pelanggan</p>
         <h1 className="mt-1 text-xl font-semibold text-zinc-900">Ringkasan akun Anda</h1>
         <p className="mt-2 text-sm text-zinc-600">Data aktual dari akun, hewan, appointment, tagihan, dan notifikasi Anda.</p>
+        {!isCustomer ? (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">Akses portal ini hanya tersedia untuk akun pelanggan.</p>
+        ) : null}
       </div>
 
+      {!canAccess('customer-portal') ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">Anda belum memiliki akses ke bagian portal pelanggan.</div>
+      ) : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -117,7 +125,7 @@ export default function PortalPage() {
                     <p className="font-medium text-zinc-900">{item.pet?.name ?? 'Hewan'}</p>
                     <p>{new Date(item.date).toLocaleString('id-ID')}</p>
                   </div>
-                  <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs">{item.status}</span>
+                  <span className={`rounded-full px-2 py-1 text-xs ${item.status === 'DONE' ? 'bg-emerald-100 text-emerald-700' : item.status === 'CANCELLED' ? 'bg-rose-100 text-rose-700' : 'bg-zinc-100 text-zinc-700'}`}>{item.status}</span>
                 </div>
               </div>
             ))}
@@ -143,15 +151,25 @@ export default function PortalPage() {
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
         <h2 className="text-base font-semibold text-zinc-900">Tagihan terbaru</h2>
         <div className="mt-3 space-y-2">
-          {invoiceList.length === 0 ? <p className="text-sm text-zinc-500">Belum ada tagihan.</p> : invoiceList.map((invoice) => (
-            <div key={invoice.id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
-              <div>
-                <p className="font-medium text-zinc-900">{invoice.invoiceNumber}</p>
-                <p>{invoice.status}</p>
+          {invoiceList.length === 0 ? <p className="text-sm text-zinc-500">Belum ada tagihan.</p> : invoiceList.map((invoice) => {
+            const isPaid = invoice.status === 'PAID';
+            const isPartial = invoice.status === 'PARTIAL_PAYMENT';
+            return (
+              <div key={invoice.id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+                <div>
+                  <p className="font-medium text-zinc-900">{invoice.invoiceNumber}</p>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
+                    {isPaid ? <BadgeCheck className="h-3.5 w-3.5 text-emerald-600" /> : <Clock3 className="h-3.5 w-3.5 text-amber-600" />}
+                    <span>{invoice.status}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-zinc-900">Rp {Number(invoice.totalAmount ?? 0).toLocaleString('id-ID')}</p>
+                  {isPartial ? <p className="text-xs text-amber-600">Pembayaran belum lunas</p> : null}
+                </div>
               </div>
-              <span className="text-sm font-semibold text-zinc-900">Rp {Number(invoice.totalAmount ?? 0).toLocaleString('id-ID')}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

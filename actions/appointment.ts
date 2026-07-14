@@ -6,6 +6,7 @@ import { auth } from '@/lib/auth';
 import { prisma, getCustomerForSession } from '@/lib/db';
 import { getActorRole, getActorId } from '@/lib/utils';
 import { notifyUser } from '@/lib/notifications-helper';
+import { canPerformAction } from '@/lib/permissions';
 
 const appointmentSchema = z.object({
   petId: z.string().min(1, 'Pilih hewan terlebih dahulu.'),
@@ -249,7 +250,7 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
     }
   }
 
-  if (actorRole !== 'OWNER' && actorRole !== 'ADMIN_KLINIK') {
+  if (!canPerformAction(actorRole, 'appointments', 'create')) {
     return { success: false, message: 'Anda tidak berwenang membuat jadwal.' };
   }
 
@@ -325,6 +326,10 @@ export async function updateAppointment(input: z.infer<typeof updateAppointmentS
 
   if (actorRole === 'CUSTOMER') {
     return { success: false, message: 'Customer tidak dapat mengubah jadwal.' };
+  }
+
+  if (!canPerformAction(actorRole, 'appointments', 'update')) {
+    return { success: false, message: 'Anda tidak berwenang mengubah jadwal.' };
   }
 
   if (actorRole === 'DOKTER') {
@@ -425,6 +430,10 @@ export async function cancelAppointment(input: z.infer<typeof cancelAppointmentS
 
   if (actorRole === 'DOKTER') {
     return { success: false, message: 'Dokter tidak dapat membatalkan jadwal.' };
+  }
+
+  if (!canPerformAction(actorRole, 'appointments', 'cancel')) {
+    return { success: false, message: 'Anda tidak berwenang membatalkan jadwal.' };
   }
 
   if (existing.status === 'DONE' || existing.status === 'CANCELLED' || existing.status === 'IN_PROGRESS') {

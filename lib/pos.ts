@@ -30,3 +30,27 @@ export function getPaymentStatus(paymentAmount: number, totalAmount: number) {
 
   return 'PARTIAL_PAYMENT';
 }
+
+export function getPaymentSummary(paymentAmount: number, totalAmount: number, paymentMethod: 'CASH' | 'NON_CASH') {
+  const normalizedPayment = roundCurrency(Math.max(0, paymentAmount));
+  const normalizedTotal = roundCurrency(Math.max(0, totalAmount));
+
+  if (paymentMethod !== 'CASH') {
+    return {
+      changeAmount: 0,
+      shortageAmount: 0,
+      isSufficient: true,
+      status: 'NON_CASH',
+    };
+  }
+
+  const shortageAmount = Math.max(0, normalizedTotal - normalizedPayment);
+  const changeAmount = Math.max(0, normalizedPayment - normalizedTotal);
+
+  return {
+    changeAmount,
+    shortageAmount,
+    isSufficient: shortageAmount === 0,
+    status: shortageAmount === 0 ? 'SUFFICIENT' : 'SHORTAGE',
+  };
+}

@@ -7,9 +7,10 @@ import { ArrowRight, Banknote, Bone, CheckCircle2, History, Package, Pill, Plus,
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { createPosSale, listPosProducts, listProductCategories } from '@/actions/pos';
 import { getInvoiceLookups } from '@/actions/invoice';
-import { calculatePosTotals, roundCurrency } from '@/lib/pos';
+import { calculatePosTotals, getPaymentSummary, roundCurrency } from '@/lib/pos';
 import { usePolling } from '@/hooks/use-polling';
 import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
+import { usePermissions } from '@/hooks/use-permissions';
 
 type ProductRow = {
   id: string;
@@ -56,6 +57,9 @@ export default function PosPage() {
   const [taxRate, setTaxRate] = useState('0');
   const [createdInvoice, setCreatedInvoice] = useState<any | null>(null);
   const checkoutTimeoutRef = useRef<number | null>(null);
+  const { canPerform, isOwner, isAdmin } = usePermissions();
+  const canManageSales = canPerform('pos', 'create');
+  const isRestrictedStaff = !isOwner && !isAdmin;
 
   const loadCustomers = useCallback(async () => {
     const result = await getInvoiceLookups();
@@ -174,12 +178,15 @@ export default function PosPage() {
   }, [discountType, discountValue, subtotal]);
   const totals = useMemo(() => calculatePosTotals(subtotal, computedDiscount, Number(taxRate) || 0), [subtotal, computedDiscount, taxRate]);
   const payment = Number(paymentAmount) || 0;
-  const change = paymentMethod === 'CASH' ? Math.max(0, payment - totals.totalAmount) : 0;
-  const paymentShortage = paymentMethod === 'CASH' ? Math.max(0, totals.totalAmount - payment) : 0;
-  const paymentError = paymentMethod === 'CASH' && payment < totals.totalAmount ? `Jumlah bayar kurang ${formatCurrency(paymentShortage)}.` : '';
+  const paymentSummary = useMemo(() => getPaymentSummary(payment, totals.totalAmount, paymentMethod), [payment, paymentMethod, totals.totalAmount]);
+  const paymentError = paymentMethod === 'CASH' && !paymentSummary.isSufficient ? `Jumlah bayar kurang ${formatCurrency(paymentSummary.shortageAmount)}.` : '';
 
   async function handleCheckout(event?: React.FormEvent | React.MouseEvent) {
     event?.preventDefault?.();
+    if (!canManageSales) {
+      toast.error('Anda tidak memiliki izin untuk melakukan transaksi POS.');
+      return;
+    }
     if (submitting) return;
     if (cart.length === 0) {
       toast.error('Keranjang kosong.');
@@ -237,7 +244,7 @@ export default function PosPage() {
       setDiscountAmount('0');
       setPaymentAmount('0');
       setTaxRate('0');
-      toast.success(`Transaksi berhasil. Kembalian ${formatCurrency(change)}.`);
+      toast.success(`Transaksi berhasil. ${paymentSummary.changeAmount > 0 ? `Kembalian ${formatCurrency(paymentSummary.changeAmount)}.` : 'Pembayaran lunas.'}`);
     } catch (error) {
       console.error(error);
       toast.error('Terjadi kesalahan saat memproses transaksi. Silakan coba lagi.');
@@ -426,7 +433,7 @@ export default function PosPage() {
 
         {paymentMethod === 'CASH' ? (
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-800">
-            <div className="flex items-center justify-between"><span>Kembalian</span><strong>{formatCurrency(change)}</strong></div>
+            <div className="flex items-center justify-between"><span>Kembalian</span><strong>{formatCurrency(paymentSummary.changeAmount)}</strong></div>
             {paymentError ? <p className="mt-1 text-xs text-red-600">{paymentError}</p> : null}
           </div>
         ) : null}
@@ -436,7 +443,7 @@ export default function PosPage() {
             <button type="button" onClick={() => setCart([])} className="inline-flex items-center justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">
               Bersihkan
             </button>
-            <button type="button" onClick={(event) => void handleCheckout(event)} disabled={submitting || cart.length === 0} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70">
+            <button type="button" onClick={(event) => void handleCheckout(event)} disabled={submitting || cart.length === 0 || !canManageSales} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70">
               <ArrowRight className="h-4 w-4" /> {submitting ? 'Proses...' : 'Bayar'}
             </button>
           </div>
@@ -460,7 +467,7 @@ export default function PosPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2 text-zinc-700">
             <ShoppingBag className="h-5 w-5" />
-            <span className="text-sm">Owner & Admin Klinik</span>
+            <span className="text-sm">{isRestrictedStaff ? 'Kasir / Staff Terbatas' : 'Owner & Admin Klinik'}</span>
             <Link href="/pos/riwayat" className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">
               <History className="h-4 w-4" /> Riwayat transaksi
             </Link>

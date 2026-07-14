@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BarChart3, CalendarDays, CircleUserRound, House, Package2, ScrollText, Settings, ShoppingBag, Stethoscope, Users, ReceiptText, Hotel, ShieldCheck } from 'lucide-react';
-import { canAccessModule } from '@/lib/permissions';
+import { usePermissions } from '@/hooks/use-permissions';
 
 interface SidebarProps {
   role: any;
@@ -28,7 +28,8 @@ const staffMenu = [
 
 export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
-  const visibleItems = staffMenu.filter((item) => canAccessModule(role, item.module));
+  const { canAccess } = usePermissions();
+  const visibleItems = staffMenu.filter((item) => canAccess(item.module));
 
   return (
     <aside className="border-b border-zinc-200 bg-white/95 px-4 py-4 lg:min-h-screen lg:w-72 lg:border-b-0 lg:border-r lg:px-6 lg:py-6">

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CalendarDays, House, ReceiptText, CircleUserRound, PawPrint, Hotel } from 'lucide-react';
+import { usePermissions } from '@/hooks/use-permissions';
 
 const items = [
   { href: '/portal', label: 'Beranda', icon: House },
@@ -15,11 +16,16 @@ const items = [
 
 export function PortalNav() {
   const pathname = usePathname();
+  const { canAccess } = usePermissions();
+  const visibleItems = items.filter((item) => {
+    if (item.href === '/portal') return true;
+    return canAccess('customer-portal');
+  });
 
   return (
     <nav className="fixed inset-x-0 bottom-0 border-t border-zinc-200 bg-white/95 backdrop-blur sm:static sm:mt-4 sm:rounded-xl sm:border sm:shadow-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-1 px-2 py-2 sm:px-3">
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canAccessModule, canPerformAction, canManageTargetRole } from '../lib/permissions';
+import { canAccessModule, canPerformAction, canManageTargetRole } from '../lib/permissions.ts';
 
 test('OWNER can access every module and every action', () => {
   const modules = ['dashboard', 'customers', 'pets', 'appointments', 'medical-records', 'procedures', 'pet-hotel', 'petshop', 'pos', 'billing', 'reports', 'users', 'settings', 'notifications', 'customer-portal', 'profile'] as const;
@@ -26,6 +26,13 @@ test('ADMIN_KLINIK cannot access settings but can manage users and staff workflo
   assert.equal(canPerformAction('ADMIN_KLINIK', 'appointments', 'cancel'), true);
   assert.equal(canPerformAction('ADMIN_KLINIK', 'reports', 'export'), true);
   assert.equal(canPerformAction('ADMIN_KLINIK', 'petshop', 'stock-adjustment'), true);
+  assert.equal(canPerformAction('ADMIN_KLINIK', 'settings', 'read'), false);
+});
+
+test('DOCTOR and CUSTOMER cannot perform actions in modules they cannot access', () => {
+  assert.equal(canPerformAction('DOKTER', 'settings', 'read'), false);
+  assert.equal(canPerformAction('CUSTOMER', 'appointments', 'read'), false);
+  assert.equal(canPerformAction('CUSTOMER', 'profile', 'update'), false);
 });
 
 test('DOKTER can only read most modules and create/update medical records', () => {
@@ -69,5 +76,5 @@ test('canManageTargetRole allows ADMIN_KLINIK only to manage CUSTOMER', () => {
 
 test('canManageTargetRole denies DOKTER and CUSTOMER management access', () => {
   assert.deepEqual(canManageTargetRole('DOKTER', 'CUSTOMER'), { allowed: false, message: 'Anda tidak berwenang mengelola akun tersebut.' });
-  assert.deepEqual(canManageTargetRole('CUSTOMER', 'CUSTOMER'), { allowed: false, message: 'Anda tidak terautentikasi.' });
+  assert.deepEqual(canManageTargetRole('CUSTOMER', 'CUSTOMER'), { allowed: false, message: 'Anda tidak berwenang mengelola akun tersebut.' });
 });

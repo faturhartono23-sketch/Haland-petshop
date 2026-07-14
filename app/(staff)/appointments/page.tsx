@@ -9,6 +9,7 @@ import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { FormDialog } from '@/components/shared/form-dialog';
 import { usePolling } from '@/hooks/use-polling';
+import { usePermissions } from '@/hooks/use-permissions';
 import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type AppointmentRow = {
@@ -39,6 +40,10 @@ export default function AppointmentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ petId: '', customerId: '', doctorId: '', date: '', queueNumber: '', status: 'WAITING' as 'WAITING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED' });
+  const { canPerform } = usePermissions();
+  const canCreateAppointment = canPerform('appointments', 'create');
+  const canUpdateAppointment = canPerform('appointments', 'update');
+  const canCancelAppointment = canPerform('appointments', 'cancel');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -170,9 +175,13 @@ export default function AppointmentsPage() {
         <Link href={`/billing?appointmentId=${row.id}&customerId=${row.customer.id}&petId=${row.pet.id}`}>
           <button type="button" className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700">Invoice</button>
         </Link>
-        <button type="button" onClick={() => handleStatus(row.id, 'IN_PROGRESS')} className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-700">In Progress</button>
-        <button type="button" onClick={() => handleStatus(row.id, 'DONE')} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">Selesai</button>
-        <button type="button" onClick={() => handleCancel(row.id)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs text-rose-700">Batal</button>
+        {canUpdateAppointment ? (
+          <>
+            <button type="button" onClick={() => handleStatus(row.id, 'IN_PROGRESS')} className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-700">In Progress</button>
+            <button type="button" onClick={() => handleStatus(row.id, 'DONE')} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">Selesai</button>
+          </>
+        ) : null}
+        {canCancelAppointment ? <button type="button" onClick={() => handleCancel(row.id)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs text-rose-700">Batal</button> : null}
       </div>
     ) },
   ];

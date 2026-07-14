@@ -1,4 +1,11 @@
-import { redirect } from 'next/navigation';
+let redirectFn: ((url: string) => never) | undefined;
+
+try {
+  const navigation = await import('next/navigation');
+  redirectFn = navigation.redirect;
+} catch {
+  redirectFn = undefined;
+}
 
 export type Role = 'OWNER' | 'ADMIN_KLINIK' | 'DOKTER' | 'CUSTOMER';
 
@@ -91,6 +98,10 @@ export function canPerformAction(role: string | undefined, module: ModuleName, a
     return false;
   }
 
+  if (!canAccessModule(role, module)) {
+    return false;
+  }
+
   const normalizedRole = role as Role;
 
   if (normalizedRole === 'OWNER') {
@@ -154,11 +165,17 @@ export function canManageTargetRole(role: string | undefined, targetRole: Role) 
 
 export function requireModuleAccess(role: Role | undefined, module: ModuleName) {
   if (!role) {
-    redirect('/login');
+    if (redirectFn) {
+      redirectFn('/login');
+    }
+    return;
   }
 
   if (!canAccessModule(role, module)) {
-    redirect(getDefaultRedirectPath(role));
+    if (redirectFn) {
+      redirectFn(getDefaultRedirectPath(role));
+    }
+    return;
   }
 }
 

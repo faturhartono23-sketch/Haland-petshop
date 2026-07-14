@@ -9,6 +9,7 @@ import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatStructuredItemsForInput, parseStructuredItems } from '@/lib/medical-record-utils';
 import { buildMedicalRecordPrefillFromSearchParams } from '@/lib/route-prefill';
+import { usePermissions } from '@/hooks/use-permissions';
 import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 
 type RecordRow = {
@@ -89,6 +90,10 @@ export default function MedicalRecordsPage() {
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [form, setForm] = useState<MedicalRecordFormState>(initialFormState);
   const searchParams = useSearchParams();
+  const { canPerform } = usePermissions();
+  const canCreateRecord = canPerform('medical-records', 'create');
+  const canUpdateRecord = canPerform('medical-records', 'update');
+  const canDeleteRecord = canPerform('medical-records', 'delete');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -246,8 +251,8 @@ export default function MedicalRecordsPage() {
     { key: 'searchText', header: 'Aksi', render: (row) => (
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={() => setSelectedRecordId(row.id)} className="rounded border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700">Lihat</button>
-        {canManage ? <button type="button" onClick={() => handleEdit(row)} className="rounded border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700">Edit</button> : null}
-        {canManage ? <button type="button" onClick={() => void handleDelete(row.id)} className="rounded border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600">Hapus</button> : null}
+        {canManage && canUpdateRecord ? <button type="button" onClick={() => handleEdit(row)} className="rounded border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700">Edit</button> : null}
+        {canManage && canDeleteRecord ? <button type="button" onClick={() => void handleDelete(row.id)} className="rounded border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600">Hapus</button> : null}
       </div>
     ) },
   ];
@@ -261,7 +266,7 @@ export default function MedicalRecordsPage() {
 
       {message ? <div className={`rounded-lg border p-3 text-sm ${messageType === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{message}</div> : null}
 
-      {canManage ? (
+      {canManage && canCreateRecord ? (
         <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2 text-zinc-900">
             <FileText className="h-4 w-4" />
@@ -374,8 +379,8 @@ export default function MedicalRecordsPage() {
               <Link href={`/billing?medicalRecordId=${selectedRecord.id}&customerId=${selectedRecord.customer?.id ?? ''}&petId=${selectedRecord.pet?.id ?? ''}`} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
                 Invoice
               </Link>
-              {canManage ? <button type="button" onClick={() => handleEdit(selectedRecord)} className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700">Edit</button> : null}
-              {canManage ? <button type="button" onClick={() => void handleDelete(selectedRecord.id)} className="rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600"><span className="flex items-center gap-2"><Trash2 className="h-4 w-4" /> Hapus</span></button> : null}
+              {canManage && canUpdateRecord ? <button type="button" onClick={() => handleEdit(selectedRecord)} className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700">Edit</button> : null}
+              {canManage && canDeleteRecord ? <button type="button" onClick={() => void handleDelete(selectedRecord.id)} className="rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600"><span className="flex items-center gap-2"><Trash2 className="h-4 w-4" /> Hapus</span></button> : null}
             </div>
           </div>
           <dl className="mt-4 grid gap-4 text-sm text-zinc-700 md:grid-cols-2">
