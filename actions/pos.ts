@@ -304,6 +304,7 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
         data: {
           customerId: resolvedCustomerId,
           walkInName: hasManualBuyer ? parsed.walkInName?.trim() : null,
+          createdById: actorId ?? null,
           invoiceNumber,
           status,
           subtotal: transactionTotals.subtotal,
