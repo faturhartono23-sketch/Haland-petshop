@@ -23,7 +23,7 @@ test('calculateFinalTotal computes discounted total and tax correctly', () => {
 
 test('validateStockAvailabilityForCheckout rejects when requested quantity exceeds stock', () => {
   const result = validateStockAvailabilityForCheckout(
-    [{ productId: 'p1', qty: 3, price: 10000, description: 'Test' }],
+    [{ productId: 'p1', qty: 3 }],
     { p1: 2 },
   );
 
