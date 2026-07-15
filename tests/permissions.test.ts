@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canAccessModule, canPerformAction, canManageTargetRole } from '../lib/permissions.ts';
+import { canAccessModule, canPerformAction, canManageTargetRole, enforceActionPermission, getPermissionAuditEntity } from '../lib/permissions';
 
 test('OWNER can access every module and every action', () => {
   const modules = ['dashboard', 'customers', 'pets', 'appointments', 'medical-records', 'procedures', 'pet-hotel', 'petshop', 'pos', 'billing', 'reports', 'users', 'settings', 'notifications', 'customer-portal', 'profile'] as const;
@@ -77,4 +77,59 @@ test('canManageTargetRole allows ADMIN_KLINIK only to manage CUSTOMER', () => {
 test('canManageTargetRole denies DOKTER and CUSTOMER management access', () => {
   assert.deepEqual(canManageTargetRole('DOKTER', 'CUSTOMER'), { allowed: false, message: 'Anda tidak berwenang mengelola akun tersebut.' });
   assert.deepEqual(canManageTargetRole('CUSTOMER', 'CUSTOMER'), { allowed: false, message: 'Anda tidak berwenang mengelola akun tersebut.' });
+});
+
+test('enforceActionPermission blocks DOKTER from creating POS transactions and logs the denial', async () => {
+  let deniedLogged = false;
+
+  const result = await enforceActionPermission({
+    role: 'DOKTER',
+    actorId: 'doctor-1',
+    module: 'pos',
+    action: 'create',
+    denyMessage: 'Anda tidak berwenang melakukan penjualan POS.',
+    logDenied: async () => {
+      deniedLogged = true;
+    },
+  });
+
+  assert.deepEqual(result, { allowed: false, message: 'Anda tidak berwenang melakukan penjualan POS.' });
+  assert.equal(deniedLogged, true);
+});
+
+test('enforceActionPermission denies DOCTOR from creating appointments and logs the denial', async () => {
+  let deniedLogged = false;
+
+  const result = await enforceActionPermission({
+    role: 'DOKTER',
+    actorId: 'doctor-2',
+    module: 'appointments',
+    action: 'create',
+    denyMessage: 'Anda tidak berwenang membuat jadwal.',
+    logDenied: async () => {
+      deniedLogged = true;
+    },
+  });
+
+  assert.deepEqual(result, { allowed: false, message: 'Anda tidak berwenang membuat jadwal.' });
+  assert.equal(deniedLogged, true);
+});
+
+test('enforceActionPermission allows ADMIN_KLINIK to create billing invoices', async () => {
+  const result = await enforceActionPermission({
+    role: 'ADMIN_KLINIK',
+    actorId: 'admin-1',
+    module: 'billing',
+    action: 'create',
+  });
+
+  assert.deepEqual(result, { allowed: true });
+});
+
+test('getPermissionAuditEntity maps modules to consistent audit entities', () => {
+  assert.equal(getPermissionAuditEntity('customers'), 'Customer');
+  assert.equal(getPermissionAuditEntity('pets'), 'Pet');
+  assert.equal(getPermissionAuditEntity('petshop'), 'Product');
+  assert.equal(getPermissionAuditEntity('billing'), 'Invoice');
+  assert.equal(getPermissionAuditEntity('profile'), 'profile');
 });

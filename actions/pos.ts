@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma, getOrCreateGuestCustomer } from '@/lib/db';
-import { canPerformAction, isStaffRole } from '@/lib/permissions';
+import { canPerformAction, enforceActionPermission, getPermissionDeniedAuditDescription, isStaffRole } from '@/lib/permissions';
 import { notifyUser } from '@/lib/notifications-helper';
-import { calculatePosTotals, getPaymentStatus, roundCurrency } from '@/lib/pos';
+import { calculatePosTotals, getPaymentStatus, roundCurrency, validatePosCheckout } from '@/lib/pos';
 import { getActorRole } from '@/lib/utils';
 import { generateInvoiceNumber } from '@/lib/numbering';
 import { deductProductStock, validateStockAvailability } from '@/lib/inventory-helpers';
@@ -141,7 +141,7 @@ export async function listProductCategories() {
 
   return {
     success: true,
-    categories: categories.map((category) => ({
+    categories: categories.map((category: any) => ({
       id: category.id,
       name: category.name,
       activeProductCount: category._count.products,
@@ -176,24 +176,53 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
     return { success: false, message: 'Data transaksi tidak valid.' };
   }
 
-  if (!actorId || !canPerformAction(actorRole, 'pos', 'create')) {
-    return { success: false, message: 'Anda tidak berwenang melakukan penjualan POS.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'pos',
+    action: 'create',
+    denyMessage: 'Anda tidak berwenang melakukan penjualan POS.',
+    logDenied: async () => {
+      await prisma.auditLog.create({
+        data: {
+          userId: actorId ?? 'unknown',
+          action: 'PERMISSION_DENIED',
+          entity: 'PosSale',
+          entityId: 'pos-sale-denied',
+          description: getPermissionDeniedAuditDescription(actorRole, 'pos', 'create'),
+        },
+      });
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   try {
     const hasManualBuyer = Boolean(parsed.data.walkInName?.trim());
     const hasSelectedCustomer = Boolean(parsed.data.customerId?.trim());
+    const subtotal = roundCurrency(parsed.data.items.reduce((sum, item) => sum + (item.price * item.qty), 0));
+    const discountValue = parsed.data.discountAmount ?? 0;
+    const discountAmount = parsed.data.discountType === 'PERCENTAGE'
+      ? roundCurrency((subtotal * Math.min(discountValue, 100)) / 100)
+      : roundCurrency(Math.min(discountValue, subtotal));
+    const computedTotals = calculatePosTotals(subtotal, discountAmount, parsed.data.taxRate ?? 0);
 
-    if (!hasManualBuyer && !hasSelectedCustomer) {
-      return { success: false, message: 'Pelanggan wajib dipilih atau isi nama pembeli manual.' };
-    }
+    const validation = validatePosCheckout({
+      customerId: parsed.data.customerId ?? '',
+      walkInName: parsed.data.walkInName ?? '',
+      items: parsed.data.items.map((item) => ({ qty: item.qty, price: item.price })),
+      discountType: parsed.data.discountType,
+      discountAmount: discountValue,
+      paymentMethod: parsed.data.paymentMethod,
+      paymentAmount: parsed.data.paymentAmount,
+      subtotal,
+      taxRate: parsed.data.taxRate ?? 0,
+    });
 
-    if (parsed.data.discountType === 'PERCENTAGE' && (parsed.data.discountAmount ?? 0) > 100) {
-      return { success: false, message: 'Diskon persentase tidak boleh lebih dari 100%.' };
-    }
-
-    if (parsed.data.discountType === 'FIXED' && (parsed.data.discountAmount ?? 0) > 0 && parsed.data.discountAmount! > 999999999) {
-      return { success: false, message: 'Diskon nominal terlalu besar.' };
+    if (!validation.ok) {
+      return { success: false, message: validation.message };
     }
 
     let resolvedCustomerId: string;
@@ -219,7 +248,7 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
       }
     }
 
-    const invoiceResult = await prisma.$transaction(async (tx) => {
+    const invoiceResult = await prisma.$transaction(async (tx: any) => {
       const productLookups = await Promise.all(
         items.map((item) => tx.product.findUnique({ where: { id: item.productId } })),
       );
@@ -249,13 +278,9 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
       const discountAmount = parsed.data.discountType === 'PERCENTAGE'
         ? roundCurrency((subtotal * Math.min(discountValue, 100)) / 100)
         : roundCurrency(Math.min(discountValue, subtotal));
-      const totals = calculatePosTotals(subtotal, discountAmount, taxRate);
+      const transactionTotals = calculatePosTotals(subtotal, discountAmount, taxRate);
 
-      if (parsed.data.paymentMethod === 'CASH' && parsed.data.paymentAmount < totals.totalAmount) {
-        throw new Error('Jumlah pembayaran kurang dari total transaksi.');
-      }
-
-      const status = getPaymentStatus(parsed.data.paymentAmount, totals.totalAmount);
+      const status = getPaymentStatus(parsed.data.paymentAmount, transactionTotals.totalAmount);
 
       const createdInvoice = await tx.invoice.create({
         data: {
@@ -263,11 +288,11 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
           walkInName: hasManualBuyer ? parsed.data.walkInName?.trim() : null,
           invoiceNumber,
           status,
-          subtotal: totals.subtotal,
-          discountAmount: totals.discountAmount,
-          taxRate: totals.taxRate,
-          taxAmount: totals.taxAmount,
-          totalAmount: totals.totalAmount,
+          subtotal: transactionTotals.subtotal,
+          discountAmount: transactionTotals.discountAmount,
+          taxRate: transactionTotals.taxRate,
+          taxAmount: transactionTotals.taxAmount,
+          totalAmount: transactionTotals.totalAmount,
           items: {
             create: validatedItems.map((item) => ({
               type: 'PRODUK',
@@ -310,18 +335,18 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
 
       await tx.auditLog.create({
         data: {
-          userId: actorId,
+          userId: actorId ?? 'unknown',
           action: 'CREATE',
           entity: 'Invoice',
           entityId: createdInvoice.id,
           description: `Penjualan POS ${invoiceNumber}`,
-        },
+        } as any,
       });
 
-      return { invoice: createdInvoice, totals };
+      return { invoice: createdInvoice, totals: transactionTotals };
     });
 
-    const { invoice, totals } = invoiceResult;
+    const { invoice, totals: invoiceTotals } = invoiceResult;
 
     const customerUser = await prisma.customer.findUnique({ where: { id: resolvedCustomerId }, select: { userId: true } });
     await notifyUser(customerUser?.userId ?? actorId, 'Penjualan POS selesai', `Transaksi ${invoice.invoiceNumber} berhasil dicatat.`, 'pos');
@@ -334,7 +359,7 @@ export async function createPosSale(input: z.infer<typeof createPosSaleSchema>) 
     return {
       success: true,
       invoice,
-      changeAmount: roundCurrency(parsed.data.paymentAmount - totals.totalAmount),
+      changeAmount: roundCurrency(parsed.data.paymentAmount - invoiceTotals.totalAmount),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Transaksi POS gagal.';
@@ -398,15 +423,15 @@ export async function getPosTransactionHistory(input: z.infer<typeof getPosTrans
     }),
   ]);
 
-  const cashierIds = [...new Set(invoices.map((invoice) => invoice.createdById).filter(Boolean) as string[])];
+  const cashierIds = [...new Set(invoices.map((invoice: any) => invoice.createdById).filter(Boolean) as string[])];
   const cashiers = cashierIds.length > 0 ? await prisma.user.findMany({
     where: { id: { in: cashierIds } },
     select: { id: true, name: true },
   }) : [];
-  const cashierMap = new Map(cashiers.map((cashier) => [cashier.id, cashier.name]));
+  const cashierMap = new Map(cashiers.map((cashier: any) => [cashier.id, cashier.name]));
 
-  const transactions = invoices.map((invoice) => {
-    const itemCount = invoice.items.reduce((sum, item) => sum + item.qty, 0);
+  const transactions = invoices.map((invoice: any) => {
+    const itemCount = invoice.items.reduce((sum: number, item: any) => sum + item.qty, 0);
     const paymentMethod = invoice.payments[0]?.method ?? 'NON_CASH';
 
     return {
@@ -419,7 +444,7 @@ export async function getPosTransactionHistory(input: z.infer<typeof getPosTrans
       totalAmount: invoice.totalAmount,
       status: invoice.status,
       paymentMethod,
-      paymentAmount: invoice.payments.reduce((sum, payment) => sum + payment.amount, 0),
+      paymentAmount: invoice.payments.reduce((sum: number, payment: any) => sum + payment.amount, 0),
     };
   });
 
@@ -462,9 +487,9 @@ export async function getPosTransactionDetail(invoiceId: string) {
     invoice: {
       ...invoice,
       customerName: invoice.walkInName?.trim() || invoice.customer?.name || 'Pelanggan',
-      itemCount: invoice.items.reduce((sum, item) => sum + item.qty, 0),
+      itemCount: invoice.items.reduce((sum: number, item: any) => sum + item.qty, 0),
       paymentMethod: invoice.payments[0]?.method ?? 'NON_CASH',
-      paymentAmount: invoice.payments.reduce((sum, payment) => sum + payment.amount, 0),
+      paymentAmount: invoice.payments.reduce((sum: number, payment: any) => sum + payment.amount, 0),
     },
   };
 }

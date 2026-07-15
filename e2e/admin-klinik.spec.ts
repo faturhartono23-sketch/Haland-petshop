@@ -13,30 +13,25 @@ test.describe('ADMIN_KLINIK - Limited Access Tests', () => {
   test('ADMIN_KLINIK can login successfully', async ({ page }) => {
     await login(page, 'ADMIN_KLINIK');
     
-    // Verify on dashboard
-    expect(page.url()).toContain('/dashboard');
+    await expect(page).toHaveURL(/\/dashboard(\/|$)/);
   });
 
   test('ADMIN_KLINIK can manage customers', async ({ page }) => {
     await login(page, 'ADMIN_KLINIK');
     
-    // Navigate to customers
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on customers page
-    expect(page.url()).toContain('/customers');
+
+    await expect(page).toHaveURL(/\/customers(\/|$)/);
   });
 
   test('ADMIN_KLINIK can view invoices', async ({ page }) => {
     await login(page, 'ADMIN_KLINIK');
     
-    // Navigate to billing
     await page.goto('/billing');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on billing page
-    expect(page.url()).toContain('/billing');
+
+    await expect(page).toHaveURL(/\/billing(\/|$)/);
   });
 
   test('ADMIN_KLINIK CANNOT access settings', async ({ page }) => {
@@ -84,7 +79,6 @@ test.describe('ADMIN_KLINIK - Limited Access Tests', () => {
     // Logout
     await logout(page);
     
-    // Verify on login page
-    expect(page.url()).toContain('/login');
+    await expect(page).toHaveURL(/\/login(\/|$)/);
   });
 });

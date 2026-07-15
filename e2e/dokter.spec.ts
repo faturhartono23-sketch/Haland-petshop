@@ -13,52 +13,43 @@ test.describe('DOKTER - Read-Mostly Access Tests', () => {
   test('DOKTER can login successfully', async ({ page }) => {
     await login(page, 'DOKTER');
     
-    // Verify on dashboard
-    expect(page.url()).toContain('/dashboard');
+    await expect(page).toHaveURL(/\/dashboard(\/|$)/);
   });
 
   test('DOKTER can view appointments', async ({ page }) => {
     await login(page, 'DOKTER');
     
-    // Navigate to appointments
     await page.goto('/appointments');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on appointments page
-    expect(page.url()).toContain('/appointments');
+
+    await expect(page).toHaveURL(/\/appointments(\/|$)/);
   });
 
   test('DOKTER can view medical records', async ({ page }) => {
     await login(page, 'DOKTER');
     
-    // Navigate to medical records
     await page.goto('/medical-records');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on medical records page
-    expect(page.url()).toContain('/medical-records');
+
+    await expect(page).toHaveURL(/\/medical-records(\/|$)/);
   });
 
   test('DOKTER can view customers', async ({ page }) => {
     await login(page, 'DOKTER');
     
-    // Navigate to customers
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on customers page
-    expect(page.url()).toContain('/customers');
+
+    await expect(page).toHaveURL(/\/customers(\/|$)/);
   });
 
   test('DOKTER can view pets', async ({ page }) => {
     await login(page, 'DOKTER');
     
-    // Navigate to pets
     await page.goto('/pets');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on pets page
-    expect(page.url()).toContain('/pets');
+
+    await expect(page).toHaveURL(/\/pets(\/|$)/);
   });
 
   test('DOKTER CANNOT access billing', async ({ page }) => {
@@ -109,7 +100,6 @@ test.describe('DOKTER - Read-Mostly Access Tests', () => {
     // Logout
     await logout(page);
     
-    // Verify on login page
-    expect(page.url()).toContain('/login');
+    await expect(page).toHaveURL(/\/login(\/|$)/);
   });
 });

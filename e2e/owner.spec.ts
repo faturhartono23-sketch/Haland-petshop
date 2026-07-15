@@ -12,83 +12,64 @@ test.describe('OWNER - Full Access Tests', () => {
 
   test('OWNER can login successfully', async ({ page }) => {
     await login(page, 'OWNER');
-    
-    // Verify on dashboard
-    expect(page.url()).toContain('/dashboard');
-    
-    // Verify dashboard elements are visible
-    const heading = page.locator('h1, h2').first();
-    await expect(heading).toBeVisible();
+
+    await expect(page).toHaveURL(/\/dashboard(\/|$)/);
+    await expect(page.locator('h1, h2').first()).toBeVisible();
   });
 
   test('OWNER can access settings', async ({ page }) => {
     await login(page, 'OWNER');
     
-    // Navigate to settings
     await page.goto('/settings');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on settings page
-    expect(page.url()).toContain('/settings');
+
+    await expect(page).toHaveURL(/\/settings(\/|$)/);
   });
 
   test('OWNER can manage users', async ({ page }) => {
     await login(page, 'OWNER');
     
-    // Navigate to users management
     await page.goto('/users');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on users page
-    expect(page.url()).toContain('/users');
-    
-    // Verify create user button exists
-    const createButton = page.locator('button').filter({ hasText: /create|tambah|add/i }).first();
-    await expect(createButton).toBeVisible();
+
+    await expect(page).toHaveURL(/\/users(\/|$)/);
+    await expect(page.locator('button').filter({ hasText: /create|tambah|add/i }).first()).toBeVisible();
   });
 
   test('OWNER can view invoices', async ({ page }) => {
     await login(page, 'OWNER');
     
-    // Navigate to billing/invoices
     await page.goto('/billing');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on billing page
-    expect(page.url()).toContain('/billing');
+
+    await expect(page).toHaveURL(/\/billing(\/|$)/);
   });
 
   test('OWNER can view appointments', async ({ page }) => {
     await login(page, 'OWNER');
     
-    // Navigate to appointments
     await page.goto('/appointments');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on appointments page
-    expect(page.url()).toContain('/appointments');
+
+    await expect(page).toHaveURL(/\/appointments(\/|$)/);
   });
 
   test('OWNER can view customers', async ({ page }) => {
     await login(page, 'OWNER');
     
-    // Navigate to customers
     await page.goto('/customers');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on customers page
-    expect(page.url()).toContain('/customers');
+
+    await expect(page).toHaveURL(/\/customers(\/|$)/);
   });
 
   test('OWNER can change PIN', async ({ page }) => {
     await login(page, 'OWNER');
     
-    // Navigate to profile/change PIN
     await page.goto('/change-pin');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on change PIN page
-    expect(page.url()).toContain('/change-pin');
+
+    await expect(page).toHaveURL(/\/change-pin(\/|$)/);
   });
 
   test('OWNER can logout', async ({ page }) => {
@@ -97,7 +78,6 @@ test.describe('OWNER - Full Access Tests', () => {
     // Logout
     await logout(page);
     
-    // Verify on login page
-    expect(page.url()).toContain('/login');
+    await expect(page).toHaveURL(/\/login(\/|$)/);
   });
 });

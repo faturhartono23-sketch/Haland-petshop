@@ -5,7 +5,7 @@ export default async function PosLayout({ children }: { children: React.ReactNod
   const session = await auth();
   const role = (session?.user as { role?: string } | undefined)?.role;
   
-  requireModuleAccess(role as any, 'pos');
+  await requireModuleAccess(role as any, 'pos');
 
   return children;
 }

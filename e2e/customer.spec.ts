@@ -13,63 +13,52 @@ test.describe('CUSTOMER - Portal Access Tests', () => {
   test('CUSTOMER can login successfully', async ({ page }) => {
     await login(page, 'CUSTOMER');
     
-    // Verify on customer portal
-    expect(page.url()).toContain('/portal');
+    await expect(page).toHaveURL(/\/portal(\/|$)/);
   });
 
   test('CUSTOMER can view own appointments', async ({ page }) => {
     await login(page, 'CUSTOMER');
     
-    // Navigate to portal appointments
     await page.goto('/portal/appointments');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on appointments page
-    expect(page.url()).toContain('/portal/appointments');
+
+    await expect(page).toHaveURL(/\/portal\/appointments(\/|$)/);
   });
 
   test('CUSTOMER can view own invoices', async ({ page }) => {
     await login(page, 'CUSTOMER');
     
-    // Navigate to portal invoices
     await page.goto('/portal/invoices');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on invoices page
-    expect(page.url()).toContain('/portal/invoices');
+
+    await expect(page).toHaveURL(/\/portal\/invoices(\/|$)/);
   });
 
   test('CUSTOMER can view own pets', async ({ page }) => {
     await login(page, 'CUSTOMER');
     
-    // Navigate to portal pets
     await page.goto('/portal/pets');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on pets page
-    expect(page.url()).toContain('/portal/pets');
+
+    await expect(page).toHaveURL(/\/portal\/pets(\/|$)/);
   });
 
   test('CUSTOMER can view pet hotel bookings', async ({ page }) => {
     await login(page, 'CUSTOMER');
     
-    // Navigate to portal pet-hotel
     await page.goto('/portal/pet-hotel');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on pet-hotel page
-    expect(page.url()).toContain('/portal/pet-hotel');
+
+    await expect(page).toHaveURL(/\/portal\/pet-hotel(\/|$)/);
   });
 
   test('CUSTOMER can view profile', async ({ page }) => {
     await login(page, 'CUSTOMER');
     
-    // Navigate to portal profile
     await page.goto('/portal/profile');
     await page.waitForLoadState('networkidle');
-    
-    // Verify on profile page
-    expect(page.url()).toContain('/portal/profile');
+
+    await expect(page).toHaveURL(/\/portal\/profile(\/|$)/);
   });
 
   test('CUSTOMER can change PIN', async ({ page }) => {
@@ -128,8 +117,7 @@ test.describe('CUSTOMER - Portal Access Tests', () => {
     // Logout
     await logout(page);
     
-    // Verify on login page
-    expect(page.url()).toContain('/login');
+    await expect(page).toHaveURL(/\/login(\/|$)/);
   });
 
   test('CUSTOMER PIN lockout after 5 failed attempts', async ({ page }) => {

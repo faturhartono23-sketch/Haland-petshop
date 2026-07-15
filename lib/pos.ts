@@ -54,3 +54,43 @@ export function getPaymentSummary(paymentAmount: number, totalAmount: number, pa
     status: shortageAmount === 0 ? 'SUFFICIENT' : 'SHORTAGE',
   };
 }
+
+export function validatePosCheckout(input: {
+  customerId: string;
+  walkInName: string;
+  items: Array<{ qty: number; price: number }>;
+  discountType: 'PERCENTAGE' | 'FIXED';
+  discountAmount: number;
+  paymentMethod: 'CASH' | 'NON_CASH';
+  paymentAmount: number;
+  subtotal: number;
+  taxRate: number;
+}) {
+  const hasManualBuyer = Boolean(input.walkInName?.trim());
+  const hasSelectedCustomer = Boolean(input.customerId?.trim());
+
+  if (!hasManualBuyer && !hasSelectedCustomer) {
+    return { ok: false as const, message: 'Pelanggan wajib dipilih atau isi nama pembeli manual.' };
+  }
+
+  if (input.items.length === 0) {
+    return { ok: false as const, message: 'Keranjang tidak boleh kosong.' };
+  }
+
+  if (input.discountType === 'PERCENTAGE' && input.discountAmount > 100) {
+    return { ok: false as const, message: 'Diskon persentase tidak boleh lebih dari 100%.' };
+  }
+
+  if (input.discountType === 'FIXED' && input.discountAmount > 0 && input.discountAmount > 999999999) {
+    return { ok: false as const, message: 'Diskon nominal terlalu besar.' };
+  }
+
+  if (input.paymentMethod === 'CASH') {
+    const totals = calculatePosTotals(input.subtotal, input.discountType === 'PERCENTAGE' ? (input.discountAmount / 100) * input.subtotal : input.discountAmount, input.taxRate);
+    if (input.paymentAmount < totals.totalAmount) {
+      return { ok: false as const, message: 'Jumlah pembayaran kurang dari total transaksi.' };
+    }
+  }
+
+  return { ok: true as const };
+}

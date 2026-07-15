@@ -1,12 +1,3 @@
-let redirectFn: ((url: string) => never) | undefined;
-
-try {
-  const navigation = await import('next/navigation');
-  redirectFn = navigation.redirect;
-} catch {
-  redirectFn = undefined;
-}
-
 export type Role = 'OWNER' | 'ADMIN_KLINIK' | 'DOKTER' | 'CUSTOMER';
 
 export type ModuleName =
@@ -93,6 +84,37 @@ export function canAccessModule(role: string | undefined, module: ModuleName) {
   return isModuleAccessibleByRole(role as Role, module);
 }
 
+export function getPermissionAuditEntity(module: ModuleName) {
+  switch (module) {
+    case 'customers':
+      return 'Customer';
+    case 'pets':
+      return 'Pet';
+    case 'appointments':
+      return 'Appointment';
+    case 'medical-records':
+      return 'MedicalRecord';
+    case 'procedures':
+      return 'Procedure';
+    case 'pet-hotel':
+      return 'PetHotelBooking';
+    case 'petshop':
+      return 'Product';
+    case 'pos':
+      return 'PosSale';
+    case 'billing':
+      return 'Invoice';
+    case 'users':
+      return 'User';
+    case 'settings':
+      return 'Settings';
+    case 'notifications':
+      return 'Notification';
+    default:
+      return module;
+  }
+}
+
 export function canPerformAction(role: string | undefined, module: ModuleName, action: PermissionAction) {
   if (!role) {
     return false;
@@ -147,6 +169,62 @@ export function canPerformAction(role: string | undefined, module: ModuleName, a
   return false;
 }
 
+type EnforceActionPermissionInput = {
+  role: string | undefined;
+  actorId?: string | null;
+  module: ModuleName;
+  action: PermissionAction;
+  denyMessage?: string;
+  logDenied?: (input: { role: string | undefined; actorId?: string | null; module: ModuleName; action: PermissionAction }) => Promise<void> | void;
+};
+
+export async function enforceActionPermission(input: EnforceActionPermissionInput) {
+  const { role, actorId, module, action, denyMessage, logDenied } = input;
+
+  if (!role || !canPerformAction(role, module, action)) {
+    if (logDenied) {
+      await logDenied({ role, actorId, module, action });
+    }
+
+    return {
+      allowed: false,
+      message: denyMessage ?? 'Anda tidak berwenang melakukan tindakan ini.',
+    } as const;
+  }
+
+  return { allowed: true } as const;
+}
+
+export function getPermissionDeniedAuditDescription(role: string | undefined, module: ModuleName, action: PermissionAction) {
+  const entity = getPermissionAuditEntity(module);
+  const actionLabel = (() => {
+    switch (action) {
+      case 'create':
+        return 'membuat';
+      case 'update':
+        return 'mengubah';
+      case 'delete':
+        return 'menghapus';
+      case 'cancel':
+        return 'membatalkan';
+      case 'payment':
+        return 'mencatat pembayaran';
+      case 'approve':
+        return 'menyetujui';
+      case 'export':
+        return 'mengekspor';
+      case 'print':
+        return 'mencetak';
+      case 'stock-adjustment':
+        return 'mengubah stok';
+      default:
+        return 'melakukan tindakan';
+    }
+  })();
+
+  return `Mencoba ${actionLabel} ${entity.toLowerCase()} tanpa izin (${role ?? 'unknown'}).`;
+}
+
 export function canManageTargetRole(role: string | undefined, targetRole: Role) {
   if (!role) {
     return { allowed: false, message: 'Tidak terautentikasi.' };
@@ -163,17 +241,23 @@ export function canManageTargetRole(role: string | undefined, targetRole: Role) 
   return { allowed: false, message: 'Anda tidak berwenang mengelola akun tersebut.' };
 }
 
-export function requireModuleAccess(role: Role | undefined, module: ModuleName) {
+export async function requireModuleAccess(role: Role | undefined, module: ModuleName) {
   if (!role) {
-    if (redirectFn) {
-      redirectFn('/login');
+    try {
+      const { redirect } = await import('next/navigation');
+      redirect('/login');
+    } catch {
+      // Fallback for non-Next runtime contexts.
     }
     return;
   }
 
   if (!canAccessModule(role, module)) {
-    if (redirectFn) {
-      redirectFn(getDefaultRedirectPath(role));
+    try {
+      const { redirect } = await import('next/navigation');
+      redirect(getDefaultRedirectPath(role));
+    } catch {
+      // Fallback for non-Next runtime contexts.
     }
     return;
   }

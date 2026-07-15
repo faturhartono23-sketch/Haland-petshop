@@ -34,63 +34,53 @@ export const testUsers: Record<UserRole, TestUser> = {
 
 export async function login(page: Page, role: UserRole): Promise<void> {
   const user = testUsers[role];
-  
-  // Navigate to login
+
   await page.goto('/login');
-  
-  // Wait for page to load
-  await page.waitForLoadState('networkidle');
-  
-  // Fill phone number
-  const phoneInput = page.locator('input[type="text"]').first();
-  await phoneInput.fill(user.phone || '');
-  
-  // Fill PIN
+  await page.waitForLoadState('domcontentloaded');
+
+  const usernameInput = page.locator('input[autocomplete="username"]').first();
+  if (await usernameInput.isVisible().catch(() => false)) {
+    await usernameInput.fill(user.name.toLowerCase().includes('owner') ? 'owner' : role === 'ADMIN_KLINIK' ? 'admin' : role === 'DOKTER' ? 'dr_budi' : 'customer');
+  }
+
   const pinInputs = page.locator('input[inputmode="numeric"]');
   const pinString = user.pin;
   for (let i = 0; i < pinString.length; i++) {
     await pinInputs.nth(i).fill(pinString[i]);
   }
-  
-  // Click login button
+
   const loginButton = page.locator('button').filter({ hasText: /login|masuk/i }).first();
   await loginButton.click();
-  
-  // Wait for redirect to dashboard/portal
+
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => undefined);
+
   if (role === 'CUSTOMER') {
-    await page.waitForURL('/portal/**', { timeout: 10000 });
+    await page.waitForURL(/\/portal(\/|$)/, { timeout: 10000 });
   } else {
-    await page.waitForURL('/dashboard', { timeout: 10000 });
+    await page.waitForURL(/\/dashboard(\/|$)/, { timeout: 10000 });
   }
 }
 
 export async function logout(page: Page): Promise<void> {
-  // Click on profile/menu
-  const menuButton = page.locator('[aria-label*="Profile"], [aria-label*="profile"], button:has-text("Profile")').first();
-  if (await menuButton.isVisible()) {
-    await menuButton.click();
-  }
-  
-  // Click logout
-  const logoutButton = page.locator('button').filter({ hasText: /logout|keluar/i }).first();
-  if (await logoutButton.isVisible()) {
+  const logoutButton = page.locator('button[aria-label="Keluar dari sistem"], button:has-text("Keluar")').first();
+  if (await logoutButton.isVisible().catch(() => false)) {
     await logoutButton.click();
+    await page.waitForURL(/\/login(\/|$)/, { timeout: 5000 });
+    return;
   }
-  
-  // Wait for redirect to login
-  await page.waitForURL('/login', { timeout: 5000 });
+
+  await page.goto('/login');
+  await page.waitForLoadState('networkidle');
 }
 
 export async function ensureLoggedOut(page: Page): Promise<void> {
-  // Check if already at login page
   if (page.url().includes('/login')) {
     return;
   }
-  
+
   try {
     await logout(page);
-  } catch (error) {
-    // Already logged out, navigate to login
+  } catch {
     await page.goto('/login');
     await page.waitForLoadState('networkidle');
   }

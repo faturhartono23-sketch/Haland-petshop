@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
-import { canPerformAction, isStaffRole } from '@/lib/permissions';
+import { canPerformAction, enforceActionPermission, getPermissionDeniedAuditDescription, isStaffRole } from '@/lib/permissions';
 import { getActorRole, getActorId, roundCurrency, normalizeOptionalText } from '@/lib/utils';
 import { generateInvoiceNumber } from '@/lib/numbering';
 import { deductProductStock, restoreProductStock, validateStockAvailability } from '@/lib/inventory-helpers';
@@ -134,8 +134,19 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     return { success: false, message: 'Data invoice tidak valid.' };
   }
 
-  if (!actorId || !canPerformAction(actorRole, 'billing', 'create')) {
-    return { success: false, message: 'Anda tidak berwenang membuat invoice.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'billing',
+    action: 'create',
+    denyMessage: 'Anda tidak berwenang membuat invoice.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'Invoice', null, getPermissionDeniedAuditDescription(actorRole, 'billing', 'create'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   // Validasi: hanya OWNER dan ADMIN_KLINIK yang boleh membuat invoice dengan item KONSULTASI atau OBAT
@@ -344,7 +355,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
   let lastError: Error | null = null;
   for (let retryAttempt = 0; retryAttempt < 3; retryAttempt += 1) {
     try {
-      invoice = await prisma.$transaction(async (tx) => {
+      invoice = await prisma.$transaction(async (tx: any) => {
         // Generate invoice number for each attempt to handle race condition
         const currentInvoiceNumber = retryAttempt === 0 ? invoiceNumber : await generateInvoiceNumber();
 
@@ -440,7 +451,7 @@ export async function createInvoice(input: z.infer<typeof createInvoiceSchema>) 
     throw lastError || new Error('Gagal membuat invoice setelah retry.');
   }
 
-  await createAuditLog(actorId, 'CREATE', 'Invoice', invoice.id, `Membuat invoice ${invoice.invoiceNumber}`);
+  await createAuditLog(actorId ?? 'unknown', 'CREATE', 'Invoice', invoice.id, `Membuat invoice ${invoice.invoiceNumber}`);
   await notifyUser(customer.userId, 'Invoice dibuat', `Invoice ${invoice.invoiceNumber} telah dibuat untuk Anda.`, 'invoice');
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');
@@ -459,8 +470,19 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
     return { success: false, message: 'Data pembayaran tidak valid.' };
   }
 
-  if (!actorId || !canPerformAction(actorRole, 'billing', 'update')) {
-    return { success: false, message: 'Anda tidak berwenang mencatat pembayaran.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'billing',
+    action: 'update',
+    denyMessage: 'Anda tidak berwenang mencatat pembayaran.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'InvoicePayment', null, getPermissionDeniedAuditDescription(actorRole, 'billing', 'payment'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   const invoice = await prisma.invoice.findUnique({ where: { id: parsed.data.invoiceId } });
@@ -477,7 +499,7 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
   }
 
   try {
-    const updatedInvoice = await prisma.$transaction(async (tx) => {
+    const updatedInvoice = await prisma.$transaction(async (tx: any) => {
       // ATOMIC: Check outstanding within transaction to prevent race condition
       // This prevents two simultaneous payments from both succeeding and causing overpayment
       const aggregate = await tx.payment.aggregate({
@@ -512,7 +534,7 @@ export async function recordInvoicePayment(input: z.infer<typeof recordPaymentSc
       return updated;
     });
 
-    await createAuditLog(actorId, 'PAYMENT', 'Invoice', updatedInvoice.id, `Mencatat pembayaran invoice ${updatedInvoice.invoiceNumber}`);
+    await createAuditLog(actorId ?? 'unknown', 'PAYMENT', 'Invoice', updatedInvoice.id, `Mencatat pembayaran invoice ${updatedInvoice.invoiceNumber}`);
     await notifyUser(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Pembayaran tercatat', `Pembayaran untuk invoice ${updatedInvoice.invoiceNumber} telah diterima.`, 'invoice');
     revalidatePath('/billing');
     revalidatePath('/portal/invoices');
@@ -537,8 +559,19 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
     return { success: false, message: 'Data tidak valid.' };
   }
 
-  if (!actorId || !canPerformAction(actorRole, 'billing', 'delete')) {
-    return { success: false, message: 'Anda tidak berwenang membatalkan invoice.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'billing',
+    action: 'delete',
+    denyMessage: 'Anda tidak berwenang membatalkan invoice.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'Invoice', null, getPermissionDeniedAuditDescription(actorRole, 'billing', 'delete'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   const invoice = await prisma.invoice.findUnique({
@@ -558,10 +591,10 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
   }
 
   const productStockDeductionItems = invoice.items
-    .filter((item) => item.type === 'PRODUK' && item.productId)
-    .map((item) => ({ productId: item.productId as string, qty: item.qty }));
+    .filter((item: { type: string; productId: string | null; qty: number }) => item.type === 'PRODUK' && item.productId)
+    .map((item: { productId: string | null; qty: number }) => ({ productId: item.productId as string, qty: item.qty }));
 
-  const updatedInvoice = await prisma.$transaction(async (tx) => {
+  const updatedInvoice = await prisma.$transaction(async (tx: any) => {
     const updated = await tx.invoice.update({
       where: { id: parsed.data.id },
       data: { status: 'CANCELLED' },
@@ -571,7 +604,7 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
     if (productStockDeductionItems.length > 0) {
       await restoreProductStock(tx, productStockDeductionItems);
       await Promise.all(
-        productStockDeductionItems.map((item) =>
+        productStockDeductionItems.map((item: { productId: string; qty: number }) =>
           tx.stockMovement.create({
             data: {
               productId: item.productId,
@@ -587,7 +620,7 @@ export async function cancelInvoice(input: z.infer<typeof cancelInvoiceSchema>) 
     return updated;
   });
 
-  await createAuditLog(actorId, 'CANCEL', 'Invoice', updatedInvoice.id, `Membatalkan invoice ${updatedInvoice.invoiceNumber}`);
+  await createAuditLog(actorId ?? 'unknown', 'CANCEL', 'Invoice', updatedInvoice.id, `Membatalkan invoice ${updatedInvoice.invoiceNumber}`);
   await notifyUser(invoice.customerId ? (await prisma.customer.findUnique({ where: { id: invoice.customerId }, select: { userId: true } }))?.userId : null, 'Invoice dibatalkan', `Invoice ${updatedInvoice.invoiceNumber} telah dibatalkan.`, 'invoice');
   revalidatePath('/billing');
   revalidatePath('/portal/invoices');

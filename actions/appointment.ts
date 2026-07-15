@@ -3,10 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { prisma, getCustomerForSession } from '@/lib/db';
+import { prisma, createAuditLog, getCustomerForSession } from '@/lib/db';
 import { getActorRole, getActorId } from '@/lib/utils';
 import { notifyUser } from '@/lib/notifications-helper';
-import { canPerformAction } from '@/lib/permissions';
+import { canPerformAction, enforceActionPermission, getPermissionDeniedAuditDescription } from '@/lib/permissions';
 
 const appointmentSchema = z.object({
   petId: z.string().min(1, 'Pilih hewan terlebih dahulu.'),
@@ -216,7 +216,7 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
 
     // ATOMIC: Wrap conflict check and create in transaction to prevent race condition
     try {
-      const appointment = await prisma.$transaction(async (tx) => {
+      const appointment = await prisma.$transaction(async (tx: any) => {
         const doctorConflict = await findDoctorConflict(parsed.data.doctorId || null, new Date(parsed.data.date));
         if (doctorConflict) {
           throw new Error('Dokter sudah memiliki jadwal pada waktu yang dipilih.');
@@ -250,8 +250,19 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
     }
   }
 
-  if (!canPerformAction(actorRole, 'appointments', 'create')) {
-    return { success: false, message: 'Anda tidak berwenang membuat jadwal.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'appointments',
+    action: 'create',
+    denyMessage: 'Anda tidak berwenang membuat jadwal.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'Appointment', null, getPermissionDeniedAuditDescription(actorRole, 'appointments', 'create'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   if (!parsed.data.customerId) {
@@ -270,7 +281,7 @@ export async function createAppointment(input: z.infer<typeof appointmentSchema>
 
   // ATOMIC: Wrap conflict check and create in transaction to prevent race condition
   try {
-    const appointment = await prisma.$transaction(async (tx) => {
+    const appointment = await prisma.$transaction(async (tx: any) => {
       const doctorConflict = await findDoctorConflict(parsed.data.doctorId || null, new Date(parsed.data.date));
       if (doctorConflict) {
         throw new Error('Dokter sudah memiliki jadwal pada waktu yang dipilih.');
@@ -328,8 +339,19 @@ export async function updateAppointment(input: z.infer<typeof updateAppointmentS
     return { success: false, message: 'Customer tidak dapat mengubah jadwal.' };
   }
 
-  if (!canPerformAction(actorRole, 'appointments', 'update')) {
-    return { success: false, message: 'Anda tidak berwenang mengubah jadwal.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'appointments',
+    action: 'update',
+    denyMessage: 'Anda tidak berwenang mengubah jadwal.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'Appointment', parsed.data.id, getPermissionDeniedAuditDescription(actorRole, 'appointments', 'update'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   if (actorRole === 'DOKTER') {
@@ -432,8 +454,19 @@ export async function cancelAppointment(input: z.infer<typeof cancelAppointmentS
     return { success: false, message: 'Dokter tidak dapat membatalkan jadwal.' };
   }
 
-  if (!canPerformAction(actorRole, 'appointments', 'cancel')) {
-    return { success: false, message: 'Anda tidak berwenang membatalkan jadwal.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'appointments',
+    action: 'cancel',
+    denyMessage: 'Anda tidak berwenang membatalkan jadwal.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'Appointment', parsed.data.id, getPermissionDeniedAuditDescription(actorRole, 'appointments', 'cancel'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   if (existing.status === 'DONE' || existing.status === 'CANCELLED' || existing.status === 'IN_PROGRESS') {

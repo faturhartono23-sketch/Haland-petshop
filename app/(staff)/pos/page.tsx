@@ -7,7 +7,7 @@ import { ArrowRight, Banknote, Bone, CheckCircle2, History, Package, Pill, Plus,
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { createPosSale, listPosProducts, listProductCategories } from '@/actions/pos';
 import { getInvoiceLookups } from '@/actions/invoice';
-import { calculatePosTotals, getPaymentSummary, roundCurrency } from '@/lib/pos';
+import { calculatePosTotals, getPaymentSummary, roundCurrency, validatePosCheckout } from '@/lib/pos';
 import { usePolling } from '@/hooks/use-polling';
 import { useRefetchOnFocus } from '@/hooks/use-refetch-on-focus';
 import { usePermissions } from '@/hooks/use-permissions';
@@ -57,6 +57,7 @@ export default function PosPage() {
   const [taxRate, setTaxRate] = useState('0');
   const [createdInvoice, setCreatedInvoice] = useState<any | null>(null);
   const checkoutTimeoutRef = useRef<number | null>(null);
+  const CART_STORAGE_KEY = 'haland-pos-cart';
   const { canPerform, isOwner, isAdmin } = usePermissions();
   const canManageSales = canPerform('pos', 'create');
   const isRestrictedStaff = !isOwner && !isAdmin;
@@ -122,6 +123,27 @@ export default function PosPage() {
     void loadCustomers();
     void loadCategories();
   }, [loadCustomers, loadCategories]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const savedCart = window.localStorage.getItem(CART_STORAGE_KEY);
+      if (!savedCart) return;
+
+      const parsedCart = JSON.parse(savedCart) as CartItem[];
+      if (Array.isArray(parsedCart)) {
+        setCart(parsedCart);
+      }
+    } catch {
+      window.localStorage.removeItem(CART_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  }, [cart]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -200,8 +222,20 @@ export default function PosPage() {
       toast.error('Isi nama pembeli manual.');
       return;
     }
-    if (paymentError) {
-      toast.error(paymentError);
+    const validation = validatePosCheckout({
+      customerId,
+      walkInName,
+      items: cart.map((item) => ({ qty: item.qty, price: item.price })),
+      discountType,
+      discountAmount: discountValue,
+      paymentMethod,
+      paymentAmount: payment,
+      subtotal,
+      taxRate: Number(taxRate) || 0,
+    });
+
+    if (!validation.ok) {
+      toast.error(validation.message);
       return;
     }
 

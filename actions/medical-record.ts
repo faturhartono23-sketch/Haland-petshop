@@ -8,7 +8,7 @@ import { parseStructuredItems, serializeStructuredItems } from '@/lib/medical-re
 import { getActorRole, getActorId, normalizeOptionalText, normalizeOptionalNumber } from '@/lib/utils';
 import { generateMedicalRecordNumber } from '@/lib/numbering';
 import { notifyUser } from '@/lib/notifications-helper';
-import { canPerformAction } from '@/lib/permissions';
+import { canPerformAction, enforceActionPermission, getPermissionDeniedAuditDescription } from '@/lib/permissions';
 
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = [
@@ -193,8 +193,19 @@ export async function createMedicalRecord(input: z.infer<typeof medicalRecordSch
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (!canPerformAction(actorRole, 'medical-records', 'create')) {
-    return { success: false, message: 'Anda tidak berwenang membuat rekam medis.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'medical-records',
+    action: 'create',
+    denyMessage: 'Anda tidak berwenang membuat rekam medis.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'MedicalRecord', null, getPermissionDeniedAuditDescription(actorRole, 'medical-records', 'create'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   const appointment = await prisma.appointment.findUnique({
@@ -224,7 +235,7 @@ export async function createMedicalRecord(input: z.infer<typeof medicalRecordSch
   }
 
   const recordNumber = await generateRecordNumber();
-  const record = await prisma.$transaction(async (tx) => {
+  const record = await prisma.$transaction(async (tx: any) => {
     const created = await tx.medicalRecord.create({
       data: {
         recordNumber,
@@ -294,8 +305,19 @@ export async function updateMedicalRecord(input: z.infer<typeof updateMedicalRec
     return { success: false, message: 'Rekam medis tidak ditemukan.' };
   }
 
-  if (!canPerformAction(actorRole, 'medical-records', 'update')) {
-    return { success: false, message: 'Anda tidak berwenang mengubah rekam medis.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'medical-records',
+    action: 'update',
+    denyMessage: 'Anda tidak berwenang mengubah rekam medis.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'MedicalRecord', parsed.data.id, getPermissionDeniedAuditDescription(actorRole, 'medical-records', 'update'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   if (actorRole === 'DOKTER' && existing.doctorId !== actorId) {
@@ -307,7 +329,7 @@ export async function updateMedicalRecord(input: z.infer<typeof updateMedicalRec
     return { success: false, message: attachmentValidation.message };
   }
 
-  const record = await prisma.$transaction(async (tx) => {
+  const record = await prisma.$transaction(async (tx: any) => {
     const updated = await tx.medicalRecord.update({
       where: { id: parsed.data.id },
       data: {
@@ -364,8 +386,19 @@ export async function deleteMedicalRecord(id: string) {
     return { success: false, message: 'Tidak terautentikasi.' };
   }
 
-  if (actorRole !== 'DOKTER' && actorRole !== 'OWNER') {
-    return { success: false, message: 'Anda tidak memiliki akses untuk menghapus rekam medis.' };
+  const permissionCheck = await enforceActionPermission({
+    role: actorRole,
+    actorId,
+    module: 'medical-records',
+    action: 'delete',
+    denyMessage: 'Anda tidak memiliki akses untuk menghapus rekam medis.',
+    logDenied: async () => {
+      await createAuditLog(actorId ?? 'unknown', 'PERMISSION_DENIED', 'MedicalRecord', id, getPermissionDeniedAuditDescription(actorRole, 'medical-records', 'delete'));
+    },
+  });
+
+  if (!permissionCheck.allowed) {
+    return { success: false, message: permissionCheck.message };
   }
 
   const existing = await prisma.medicalRecord.findUnique({ where: { id } });
@@ -377,7 +410,7 @@ export async function deleteMedicalRecord(id: string) {
     return { success: false, message: 'Anda hanya bisa menghapus rekam medis pasien yang Anda tangani.' };
   }
 
-  const deleted = await prisma.$transaction(async (tx) => {
+  const deleted = await prisma.$transaction(async (tx: any) => {
     const removed = await tx.medicalRecord.delete({ where: { id } });
     await tx.auditLog.create({
       data: {
